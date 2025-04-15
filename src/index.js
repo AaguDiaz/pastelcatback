@@ -8,7 +8,7 @@ const port = process.env.PORT || 5000;
 
 // Configura CORS
 app.use(cors({
-  origin: process.env.CORS_ORIGIN || 'http://localhost:3000', // Cambia esto según tu frontend
+  origin: process.env.CORS_ORIGIN || 'http://localhost:3000' || 'https://pastelcat.vercel.app/', // Cambia esto según tu frontend
   methods: ['GET', 'POST', 'OPTIONS'],
   allowedHeaders: ['Content-Type', 'Authorization'],
 }));
