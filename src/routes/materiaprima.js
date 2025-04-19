@@ -1,5 +1,6 @@
 const express = require('express');
 const router = express.Router();
+const supabase = require('../config/supabase');
 const { authenticateToken } = require('../middleware/auth'); 
 const {
   getMateriasPrimas,
@@ -9,6 +10,7 @@ const {
 } = require('../services/materiaprimaservice');
 
 router.get('/', authenticateToken, async (req, res) => {
+  const userId = req.user.sub;
   try {
     const { page = 1, search = '' } = req.query;
     const result = await getMateriasPrimas(parseInt(page), search);
