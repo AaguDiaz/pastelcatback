@@ -16,8 +16,8 @@ app.use(cors({
 app.use(express.json());
 
 // Rutas
-const authRoutes = require('./routes/auth');
-const materiasPrimasRoutes = require('./routes/materiaprima');
+const authRoutes = require('./src/routes/auth');
+const materiasPrimasRoutes = require('./src/routes/materiaprima');
 
 app.use('/auth', authRoutes);
 app.use('/materias-primas', materiasPrimasRoutes);
