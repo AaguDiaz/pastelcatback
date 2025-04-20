@@ -1,5 +1,6 @@
 const express = require('express');
 const cors = require('cors');
+const serverless = require('serverless-http');
 require('dotenv').config();
 
 const app = express();
@@ -18,8 +19,8 @@ app.use(express.json());
 const authRoutes = require('./routes/auth');
 const materiasPrimasRoutes = require('./routes/materiaprima');
 
-app.use('/api', authRoutes);
-app.use('/api/materias-primas', materiasPrimasRoutes);
+app.use('/auth', authRoutes);
+app.use('/materias-primas', materiasPrimasRoutes);
 
 // Ruta de prueba
 app.get('/', (req, res) => {
