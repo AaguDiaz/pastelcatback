@@ -3,13 +3,19 @@ const cors = require('cors');
 require('dotenv').config();
 
 const app = express();
-const port = process.env.PORT || 5000;
 
 // Configura CORS
+const allowedOrigins = ['http://localhost:3000', 'https://pastelcat.vercel.app'];
 app.use(cors({
-  origin: process.env.CORS_ORIGIN || 'https://pastelcat.vercel.app',
-  methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
-  allowedHeaders: ['Content-Type', 'Authorization'],
+  origin: (origin, callback) => {
+    if (!origin || allowedOrigins.includes(origin)) {
+      callback(null, true)
+    } else {
+      callback(new Error('No autorizado por CORS'))
+    }
+  },
+  methods: ['GET', 'POST', 'PUT', 'DELETE'],
+  allowedHeaders: ['Content-Type', 'Authorization']
 }));
 
 // Middleware para parsear JSON
