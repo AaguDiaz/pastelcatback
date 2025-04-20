@@ -2,13 +2,6 @@ const express = require('express');
 const router = express.Router();
 const { login } = require('../services/authservice');
 
-router.options('/login', (req, res) => {
-  res.header('Access-Control-Allow-Origin', '*'); // Podés restringir si querés
-  res.header('Access-Control-Allow-Methods', 'POST, OPTIONS');
-  res.header('Access-Control-Allow-Headers', 'Content-Type, Authorization');
-  return res.sendStatus(204);
-});
-
 
 router.post('/login', async (req, res) => {
   try {
@@ -19,5 +12,3 @@ router.post('/login', async (req, res) => {
     res.status(400).json({ error: err.message });
   }
 });
-
-module.exports = router;
