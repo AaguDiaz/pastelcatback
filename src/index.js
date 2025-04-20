@@ -7,7 +7,7 @@ const port = process.env.PORT || 5000;
 
 // Configura CORS
 app.use(cors({
-  origin: process.env.CORS_ORIGIN || 'https://pastelcat.vercel.app/',
+  origin: process.env.CORS_ORIGIN || 'https://pastelcat.vercel.app',
   methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
   allowedHeaders: ['Content-Type', 'Authorization'],
 }));
@@ -31,8 +31,4 @@ app.get('/', (req, res) => {
 app.use((err, req, res, next) => {
   console.error(err.stack);
   res.status(500).json({ error: 'Error en el servidor' });
-});
-
-app.listen(port, () => {
-  console.log(`Servidor corriendo en http://localhost:${port}`);
 });
