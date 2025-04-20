@@ -1,6 +1,5 @@
 const express = require('express');
 const cors = require('cors');
-const serverless = require('serverless-http');
 require('dotenv').config();
 
 const app = express();
@@ -16,8 +15,8 @@ app.use(cors({
 app.use(express.json());
 
 // Rutas
-const authRoutes = require('./src/routes/auth');
-const materiasPrimasRoutes = require('./src/routes/materiaprima');
+const authRoutes = require('./routes/auth');
+const materiasPrimasRoutes = require('./routes/materiaprima');
 
 app.use('/auth', authRoutes);
 app.use('/materias-primas', materiasPrimasRoutes);
@@ -33,4 +32,7 @@ app.use((err, req, res, next) => {
   res.status(500).json({ error: 'Error en el servidor' });
 });
 
-module.exports = serverless(app);
+const port = process.env.PORT || 5000;
+app.listen(port, () => {
+  console.log(`Servidor corriendo en puerto ${port}`);
+});
