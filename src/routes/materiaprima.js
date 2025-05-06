@@ -1,6 +1,5 @@
 const express = require('express');
 const router = express.Router();
-const supabase = require('../config/supabase');
 const { authenticateToken } = require('../middleware/auth'); 
 const {
   getMateriasPrimas,
