@@ -17,10 +17,11 @@ app.use(express.json());
 // Rutas
 const authRoutes = require('./routes/auth');
 const materiasPrimasRoutes = require('./routes/materiaprima');
+const tortasRoutes = require('./routes/torta');
 
 app.use('/auth', authRoutes);
 app.use('/materias-primas', materiasPrimasRoutes);
-
+app.use('/tortas', tortasRoutes);
 // Ruta de prueba
 app.get('/', (req, res) => {
   res.json({ message: 'Bienvenido a PastelCatBack' });
