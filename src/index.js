@@ -6,7 +6,7 @@ const app = express();
 
 // Configura CORS
 app.use(cors({
-  origin: process.env.CORS_ORIGIN || 'https://pastelcat.vercel.app',
+  origin: process.env.CORS_ORIGIN || 'https://pastelcat.vercel.app', //  'http://localhost:3000'
   methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
   allowedHeaders: ['Content-Type', 'Authorization'],
 }));
@@ -18,10 +18,13 @@ app.use(express.json());
 const authRoutes = require('./routes/auth');
 const materiasPrimasRoutes = require('./routes/materiaprima');
 const tortasRoutes = require('./routes/torta');
+const recetasRoutes = require('./routes/receta');
 
 app.use('/auth', authRoutes);
 app.use('/materias-primas', materiasPrimasRoutes);
 app.use('/tortas', tortasRoutes);
+app.use('/receta', recetasRoutes);
+
 // Ruta de prueba
 app.get('/', (req, res) => {
   res.json({ message: 'Bienvenido a PastelCatBack' });
