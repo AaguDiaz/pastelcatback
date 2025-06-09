@@ -7,6 +7,7 @@ const {
   createReceta,
   getRecetas,
   getIngredientesReceta,
+  getRecetaCompletaPorTorta,
   updateReceta,
   deleteReceta,
 } = require('../services/recetaservice')
@@ -94,6 +95,16 @@ router.delete('/:id', authenticateToken, async (req, res) => {
     res.status(200).json(resultado);
   } catch (error) {
     res.status(500).json({ error: 'Error al eliminar la receta' });
+  }
+});
+
+router.get('/detalles/torta/:id_torta', authenticateToken, async (req, res) => {
+  try {
+    const { id_torta } = req.params;
+    const detalles = await getRecetaCompletaPorTorta(id_torta);
+    res.json(detalles);
+  } catch (error) {
+    res.status(404).json({ error: error.message });
   }
 });
 
