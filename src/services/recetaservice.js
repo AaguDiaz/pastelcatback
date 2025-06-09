@@ -101,7 +101,10 @@ const getIngredientesReceta = async (id_receta) => {
       unidadmedida,
       materiaprima (
         id_materiaprima,
-        nombre
+        nombre,
+        unidadmedida,
+        cantidad,
+        preciototal
       )
     `)
     .eq('id_receta', id_receta);
@@ -114,11 +117,38 @@ const getIngredientesReceta = async (id_receta) => {
     ingrediente: ing.materiaprima.nombre,
     cantidad: ing.cantidad,
     unidad: ing.unidadmedida,
+    precio: ing.materiaprima.preciototal,
+    unidadmedida: ing.materiaprima.unidadmedida,
+    cantidadMateriaPrima: ing.materiaprima.cantidad,
   }));
 
   return ingredientesFormateados;
 };
 
+const getRecetaCompletaPorTorta = async (id_torta) => {
+  // 1. Encontrar la receta y sus porciones usando el id_torta
+  const { data: receta, error: errorReceta } = await supabase
+    .from('receta')
+    .select('id_receta, porciones')
+    .eq('id_torta', id_torta)
+    .single(); // Esperamos una sola receta por torta
+
+  if (errorReceta) {
+    if (errorReceta.code === 'PGRST116') { // Código de Supabase para "no se encontró una fila"
+      throw new Error('No se encontró una receta para esta torta.');
+    }
+    throw errorReceta;
+  }
+
+  // 2. Usar la función ya existente para obtener los ingredientes
+  const ingredientes = await getIngredientesReceta(receta.id_receta);
+
+  // 3. Devolver un objeto combinado
+  return {
+    porciones: receta.porciones,
+    ingredientes: ingredientes,
+  };
+};
 
 const updateReceta = async (id_receta, { porciones, ingredientes }) => {
   // 1. Actualizar los datos principales de la receta
@@ -180,6 +210,7 @@ module.exports = {
   createReceta,
     getRecetas,
     getIngredientesReceta,
+    getRecetaCompletaPorTorta,
     updateReceta,
     deleteReceta,
 }
