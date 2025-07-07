@@ -6,7 +6,7 @@ const app = express();
 
 // Configura CORS
 app.use(cors({
-  origin: process.env.CORS_ORIGIN || 'https://pastelcat.vercel.app',// 'http://localhost:3000', 
+  origin: process.env.CORS_ORIGIN || 'http://localhost:3000', //'https://pastelcat.vercel.app',//  
   methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
   allowedHeaders: ['Content-Type', 'Authorization'],
 }));
@@ -19,11 +19,13 @@ const authRoutes = require('./routes/auth');
 const materiasPrimasRoutes = require('./routes/materiaprima');
 const tortasRoutes = require('./routes/torta');
 const recetasRoutes = require('./routes/receta');
+const bandejasRoutes = require('./routes/bandeja');
 
 app.use('/auth', authRoutes);
 app.use('/materias-primas', materiasPrimasRoutes);
 app.use('/tortas', tortasRoutes);
-app.use('/receta', recetasRoutes);
+app.use('/receta', recetasRoutes)
+app.use('/bandejas', bandejasRoutes);
 
 // Ruta de prueba
 app.get('/', (req, res) => {
