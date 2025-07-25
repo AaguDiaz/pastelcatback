@@ -31,19 +31,24 @@ const uploadImage = async (file,  bucket_name) => {
 const deleteImage = async (imageUrl, bucket_name) => {
   if (!imageUrl) return;
 
-  const pathParts = imageUrl.split('/storage/v1/object/public/tortas-imagenes/');
-  if (pathParts.length < 2) return; // Si la URL no tiene el formato esperado, salir
+  // Usa dinámicamente el bucket que llega por parámetro
+  const prefix = `/storage/v1/object/public/${bucket_name}/`;
+  const pathParts = imageUrl.split(prefix);
 
-  const filePath = pathParts[1]; 
+  if (pathParts.length < 2) return;
+
+  const filePath = pathParts[1];
   if (!filePath) return;
 
   const { error } = await supabase.storage
-    .from(`${bucket_name}`)
+    .from(bucket_name)
     .remove([filePath]);
 
   if (error) {
-    throw new Error(`Error al eliminar la imagen anterior: ${error.message}`);
+    throw new Error(`Error al eliminar la imagen del bucket: ${error.message}`);
   }
+
+  console.log(`✅ Imagen eliminada: ${filePath} del bucket ${bucket_name}`);
 };
 
 module.exports = {

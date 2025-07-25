@@ -1,5 +1,43 @@
-// src/services/bandejaservice.js
 const supabase = require('../config/supabase');
+const storagedeleteImage = require('./storageService').deleteImage;
+
+const getBandejas = async (page = 1, search = '') => {
+  const itemsPerPage = 8;
+  const start = (page - 1) * itemsPerPage;
+  const end = start + itemsPerPage - 1;
+
+  // La consulta ahora incluye las tablas relacionadas
+  let query = supabase
+    .from('bandeja')
+    .select(`
+      *,
+      bandeja_tortas (
+        *,
+        torta (
+          nombre,
+          tamanio
+        )
+      )
+    `, { count: 'exact' }) // Se mantiene el count para la paginación
+    .range(start, end);
+
+  if (search) {
+    query = query.ilike('nombre', `%${search}%`);
+  }
+
+  const { data, error, count } = await query;
+  if (error) {
+    console.error("Error al obtener bandejas con tortas:", error);
+    throw new Error('Error al obtener bandejas');
+  }
+
+  return {
+    data: data || [],
+    totalPages: Math.ceil((count || 0) / itemsPerPage),
+    currentPage: page,
+  };
+};
+
 
 const getTortasParaBandejas = async () => {
     try {
@@ -71,7 +109,6 @@ const createBandeja = async (bandejaData, tortasEnBandeja) => {
         }
 
         const id_bandeja_creada = bandeja[0].id_bandeja;
-        console.log("→ TORTAS A INSERTAR:", tortasEnBandeja);
         // 2. Preparar datos para insertar en la tabla 'bandeja_tortas'
         const bandejaTortasInserts = tortasEnBandeja.map(torta => ({
             id_bandeja: id_bandeja_creada,
@@ -96,7 +133,116 @@ const createBandeja = async (bandejaData, tortasEnBandeja) => {
     }
 };
 
+// función para actualizar una bandeja
+const updateBandeja = async ({ id_bandeja, nombre, precio, tamanio, imagenUrl, tortas }) => {
+
+  const { error: updateError } = await supabase
+    .from('bandeja')
+    .update({
+      nombre,
+      precio,
+      tamanio,
+      imagen: imagenUrl,
+    })
+    .eq('id_bandeja', id_bandeja);
+
+  if (updateError) {
+    throw new Error(`Error al actualizar bandeja: ${updateError.message}`);
+  }
+
+  const { error: deleteError } = await supabase
+    .from('bandeja_tortas')
+    .delete()
+    .eq('id_bandeja', id_bandeja);
+
+  if (deleteError) {
+    throw new Error(`Error al limpiar bandeja_tortas: ${deleteError.message}`);
+  }
+
+  if (tortas.length > 0) {
+    const inserts = tortas.map(t => ({
+      id_bandeja: id_bandeja,
+      id_torta: t.id_torta,
+      porciones: t.porciones,
+      precio: t.precio,
+    }));
+
+    const { error: insertError } = await supabase
+      .from('bandeja_tortas')
+      .insert(inserts);
+
+    if (insertError) {
+      throw new Error(`Error al insertar nuevas tortas: ${insertError.message}`);
+    }
+  }
+
+  return {
+    id_bandeja,
+    nombre,
+    precio,
+    tamanio,
+    imagen: imagenUrl,
+    tortas
+  };
+};
+
+//obtener la URL de la imagen vieja
+const getBandejaImageUrl = async (bandejaId) => {
+    const { data, error } = await supabase
+        .from('bandeja')
+        .select('imagen')
+        .eq('id_bandeja', bandejaId)
+        .single();
+
+    if (error) return null;
+    return data ? data.imagen : null;
+};
+
+const deleteBandeja = async (id) => {
+  const { data: bandeja, error: fetchError } = await supabase
+    .from('bandeja')
+    .select('imagen')
+    .eq('id_bandeja', id)
+    .single();
+
+  if (fetchError) {
+    throw new Error(`Error al obtener la bandeja: ${fetchError.message}`);
+  }
+
+  if (!bandeja) {
+    throw new Error('Bandeja no encontrada.');
+  }
+
+  const { error: deleteTortasError } = await supabase
+    .from('bandeja_tortas')
+    .delete()
+    .eq('id_bandeja', id);
+
+  if (deleteTortasError) {
+    throw new Error(`Error al eliminar las tortas de la bandeja: ${deleteTortasError.message}`);
+  }
+
+  if (bandeja.imagen) {
+    await storagedeleteImage(bandeja.imagen, 'bandejas-imagen');
+  }
+
+  const { error: deleteBandejaError } = await supabase
+    .from('bandeja')
+    .delete()
+    .eq('id_bandeja', id);
+
+  if (deleteBandejaError) {
+    throw new Error(`Error al eliminar la bandeja: ${deleteBandejaError.message}`);
+  }
+
+  return true;
+};
+
 module.exports = {
+    getBandejas,
     createBandeja,
     getTortasParaBandejas,
+    updateBandeja,
+    getBandejaImageUrl,
+    deleteBandeja
 };
