@@ -83,7 +83,7 @@ const uploadImage = async (file) => {
   return data.publicUrl;
 };
 
-// Nueva función para eliminar una imagen del bucket
+// función para eliminar una imagen del bucket
 const deleteImage = async (imageUrl) => {
   if (!imageUrl) return;
 
@@ -103,7 +103,7 @@ const deleteImage = async (imageUrl) => {
   }
 };
 
-// Nueva función para actualizar una torta
+// función para actualizar una torta
 const updateTorta = async (id, { nombre, precio, tamanio, imagen, existingImage }) => {
   if (!nombre || typeof nombre !== 'string' || nombre.trim() === '') {
     throw new Error('El campo Nombre es requerido.');
