@@ -4,7 +4,7 @@ const multer = require('multer');
 
 const { authenticateToken } = require('../middleware/auth'); // Middleware de autenticación 
 const bandejaService = require('../services/bandejaservice'); // Importar el nuevo servicio
-const storageService = require('../services/storageService'); // Importar el servicio de almacenamiento
+const storageService = require('../services/storageservice'); // Importar el servicio de almacenamiento
 const upload = multer({storage: multer.memoryStorage()}); // Configuración de multer para manejar archivos
 
 router.get('/', authenticateToken, async (req, res) => {

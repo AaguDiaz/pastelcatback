@@ -1,5 +1,5 @@
 const supabase = require('../config/supabase');
-const storagedeleteImage = require('./storageService').deleteImage;
+const storagedeleteImage = require('./storageservice').deleteImage;
 
 const getBandejas = async (page = 1, search = '') => {
   const itemsPerPage = 8;
