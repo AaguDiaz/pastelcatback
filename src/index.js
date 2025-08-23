@@ -1,4 +1,5 @@
 const express = require('express');
+const {sendError, AppError} = require('./utils/errors');
 const cors = require('cors');
 require('dotenv').config();
 
@@ -39,10 +40,8 @@ app.get('/', (req, res) => {
 });
 
 // Manejo de errores
-app.use((err, req, res, next) => {
-  console.error(err.stack);
-  res.status(500).json({ error: 'Error en el servidor' });
-});
+app.use((req, res, next) => next(AppError.notFound('Endpoint no encontrado')));
+app.use((err, req, res, next) => sendError(res, err));
 
 const port = process.env.PORT || 5000;
 app.listen(port, () => {

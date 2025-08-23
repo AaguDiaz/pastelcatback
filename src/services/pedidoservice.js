@@ -21,12 +21,18 @@ const getPedidos = async (page = 1, estado = null) => {
 
   let query = supabase
     .from('pedido')
-    .select('id_pedido, fecha_pedido, fecha_entrega, total, estado:estado(estado)', { count: 'exact' })
+    .select(
+      // devolvemos total_final como total para que el front no cambie
+      'id, fecha_creacion, fecha_entrega, total_final, estado:estado(estado)',
+      { count: 'exact' }
+    )
     .range(start, end)
-    .order('fecha_pedido', { ascending: false });
+    .order('fecha_creacion', { ascending: false });
 
   if (estado) {
-    query = query.eq('id_estado', estado);
+    // permitir filtrar por id numérico o por nombre del estado
+    const idEstado = isNaN(+estado) ? await fetchEstadoId(estado) : +estado;
+    query = query.eq('id_estado', idEstado);
   }
 
   const { data, error, count } = await query;
@@ -44,17 +50,8 @@ const getPedidos = async (page = 1, estado = null) => {
 const getPedidoById = async (id) => {
   const { data, error } = await supabase
     .from('pedido')
-    .select(`
-      *,
-      cliente:cliente(*),
-      estado:estado(*),
-      pedido_detalle(
-        *,
-        torta:torta(*),
-        bandeja:bandeja(*)
-      )
-    `)
-    .eq('id_pedido', id)
+    .select('id, fecha_creacion, fecha_entrega, total_final, estado:estado(estado)', { count: 'exact' })
+    .eq('id', id)
     .single();
 
   if (error || !data) {
@@ -64,54 +61,85 @@ const getPedidoById = async (id) => {
   return data;
 };
 
-const createPedido = async ({ id_cliente, fecha_entrega, id_tipo_entrega, tortas = [], bandejas = [], observaciones = null }) => {
-  if (!id_cliente || !fecha_entrega || !id_tipo_entrega) {
+const createPedido = async ({
+  id_cliente,
+  fecha_entrega,
+  tipo_entrega,                 // varchar en la tabla
+  tortas = [],
+  bandejas = [],
+  observaciones = null,
+  direccion_entrega = null,
+}) => {
+  if (!id_cliente || !fecha_entrega || !tipo_entrega) {
     throw new Error('Faltan datos del pedido');
   }
 
   const idEstadoPendiente = await fetchEstadoId(ESTADO_PENDIENTE);
 
   let total = 0;
+  let totalItems = 0;
   const detalles = [];
 
+  // tortas
   for (const item of tortas) {
     const { data, error } = await supabase
       .from('torta')
       .select('id_torta, precio')
       .eq('id_torta', item.id_torta)
       .single();
-    if (error || !data) {
-      throw new Error('Torta no encontrada');
-    }
-    const subtotal = data.precio * item.cantidad;
+    if (error || !data) throw new Error('Torta no encontrada');
+
+    const cantidad = Number(item.cantidad) || 0;
+    const precio = Number(data.precio) || 0;
+    const subtotal = precio * cantidad;
+
     total += subtotal;
-    detalles.push({ id_torta: data.id_torta, cantidad: item.cantidad, precio_unitario: data.precio, subtotal });
+    totalItems += cantidad;
+
+    detalles.push({
+      id_torta: data.id_torta,
+      cantidad,
+      precio_unitario: precio,
+    });
   }
 
+  // bandejas
   for (const item of bandejas) {
     const { data, error } = await supabase
       .from('bandeja')
       .select('id_bandeja, precio')
       .eq('id_bandeja', item.id_bandeja)
       .single();
-    if (error || !data) {
-      throw new Error('Bandeja no encontrada');
-    }
-    const subtotal = data.precio * item.cantidad;
+    if (error || !data) throw new Error('Bandeja no encontrada');
+
+    const cantidad = Number(item.cantidad) || 0;
+    const precio = Number(data.precio) || 0;
+    const subtotal = precio * cantidad;
+
     total += subtotal;
-    detalles.push({ id_bandeja: data.id_bandeja, cantidad: item.cantidad, precio_unitario: data.precio, subtotal });
+    totalItems += cantidad;
+
+    detalles.push({
+      id_bandeja: data.id_bandeja,
+      cantidad,
+      precio_unitario: precio,
+    });
   }
 
+  // insertar pedido
   const { data: pedidoData, error: pedidoError } = await supabase
     .from('pedido')
     .insert({
       id_cliente,
-      fecha_pedido: new Date().toISOString(),
+      fecha_creacion: new Date().toISOString(),
       fecha_entrega,
       id_estado: idEstadoPendiente,
-      id_tipo_entrega,
-      total,
+      tipo_entrega, 
+      total_items: totalItems,
+      total_descuento: 0, 
+      total_final: total,
       observaciones,
+      direccion_entrega,
     })
     .select()
     .single();
@@ -121,11 +149,11 @@ const createPedido = async ({ id_cliente, fecha_entrega, id_tipo_entrega, tortas
   }
 
   for (const det of detalles) {
-    det.id_pedido = pedidoData.id_pedido;
+    det.id_pedido = pedidoData.id;       
   }
 
   const { error: detError } = await supabase
-    .from('pedido_detalle')
+    .from('pedido_detalles')
     .insert(detalles);
 
   if (detError) {
@@ -141,43 +169,70 @@ const updatePedido = async (id, datos) => {
     throw new Error('Solo se puede editar un pedido pendiente');
   }
 
-  const { id_cliente, fecha_entrega, id_tipo_entrega, tortas = [], bandejas = [], observaciones = null } = datos;
+  const {
+    id_cliente,
+    fecha_entrega,
+    tipo_entrega,            
+    tortas = [],
+    bandejas = [],
+    observaciones = null,
+    direccion_entrega = null,
+  } = datos;
 
-  if (!id_cliente || !fecha_entrega || !id_tipo_entrega) {
+  if (!id_cliente || !fecha_entrega || !tipo_entrega) {
     throw new Error('Faltan datos del pedido');
   }
 
-  await supabase.from('pedido_detalle').delete().eq('id_pedido', id);
+  await supabase.from('pedido_detalles').delete().eq('id_pedido', id);
 
   let total = 0;
+  let totalItems = 0;
   const detalles = [];
 
+  // tortas
   for (const item of tortas) {
     const { data, error } = await supabase
       .from('torta')
       .select('id_torta, precio')
       .eq('id_torta', item.id_torta)
       .single();
-    if (error || !data) {
-      throw new Error('Torta no encontrada');
-    }
-    const subtotal = data.precio * item.cantidad;
+    if (error || !data) throw new Error('Torta no encontrada');
+
+    const cantidad = Number(item.cantidad) || 0;
+    const precio = Number(data.precio) || 0;
+    const subtotal = precio * cantidad;
+
     total += subtotal;
-    detalles.push({ id_pedido: id, id_torta: data.id_torta, cantidad: item.cantidad, precio_unitario: data.precio, subtotal });
+    totalItems += cantidad;
+
+    detalles.push({
+      id_torta: data.id_torta,
+      cantidad,
+      precio_unitario: precio,
+    });
   }
 
+  // bandejas
   for (const item of bandejas) {
     const { data, error } = await supabase
       .from('bandeja')
       .select('id_bandeja, precio')
       .eq('id_bandeja', item.id_bandeja)
       .single();
-    if (error || !data) {
-      throw new Error('Bandeja no encontrada');
-    }
-    const subtotal = data.precio * item.cantidad;
+    if (error || !data) throw new Error('Bandeja no encontrada');
+
+    const cantidad = Number(item.cantidad) || 0;
+    const precio = Number(data.precio) || 0;
+    const subtotal = precio * cantidad;
+
     total += subtotal;
-    detalles.push({ id_pedido: id, id_bandeja: data.id_bandeja, cantidad: item.cantidad, precio_unitario: data.precio, subtotal });
+    totalItems += cantidad;
+
+    detalles.push({
+      id_bandeja: data.id_bandeja,
+      cantidad,
+      precio_unitario: precio,
+    });
   }
 
   const { data: pedidoActualizado, error: updateError } = await supabase
@@ -185,11 +240,15 @@ const updatePedido = async (id, datos) => {
     .update({
       id_cliente,
       fecha_entrega,
-      id_tipo_entrega,
-      total,
+      tipo_entrega,
+      total_items: totalItems,
+      total_descuento: 0,
+      total_final: total,
       observaciones,
+      direccion_entrega,
+      update_at: new Date().toISOString(),
     })
-    .eq('id_pedido', id)
+    .eq('id', id)
     .select()
     .single();
 
@@ -198,10 +257,10 @@ const updatePedido = async (id, datos) => {
   }
 
   if (detalles.length > 0) {
-    const { error: detError } = await supabase.from('pedido_detalle').insert(detalles);
-    if (detError) {
-      throw new Error('Error al actualizar detalle del pedido');
-    }
+    const { error: detError } = await supabase
+      .from('pedido_detalles')
+      .insert(detalles.map(d => ({ ...d, id_pedido: id })));
+    if (detError) throw new Error('Error al actualizar detalle del pedido');
   }
 
   return pedidoActualizado;
@@ -225,7 +284,7 @@ const updateEstado = async (id, nuevoEstado) => {
   const { data, error } = await supabase
     .from('pedido')
     .update({ id_estado: idNuevoEstado })
-    .eq('id_pedido', id)
+    .eq('id', id)
     .select()
     .single();
 

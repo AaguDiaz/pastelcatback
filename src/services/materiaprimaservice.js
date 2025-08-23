@@ -1,4 +1,6 @@
 const supabase = require('../config/supabase');
+const { AppError, fromSupabaseError, assertFound } = require('../utils/errors');
+
 
 const getMateriasPrimas = async (page = 1, search = '') => {
   const itemsPerPage = 10;
@@ -62,19 +64,31 @@ const updateMateriaPrima = async (id, { nombre, unidadmedida, cantidad, precioto
 };
 
 const deleteMateriaPrima = async (id) => {
-  const { error } = await supabase
-    .from('materiaprima')
-    .delete()
+  // (Opcional) chequeo amistoso para un mensaje claro
+  const { count, error: countErr } = await supabase
+    .from('ingredientereceta') // ajustá a tu tabla pivote real
+    .select('*', { count: 'exact', head: true })
     .eq('id_materiaprima', id);
 
-  if (error) {
-    throw new Error('Error al eliminar materia prima');
+  if (countErr) throw fromSupabaseError(countErr, 'No se pudo verificar el uso de la materia prima.');
+  if ((count ?? 0) > 0) {
+    throw AppError.conflict(`No se puede eliminar: está usada en ${count} receta(s).`);
   }
+
+  const { data, error } = await supabase
+    .from('materiaprima')
+    .delete()
+    .eq('id_materiaprima', id)
+    .select('id_materiaprima');
+
+  if (error) throw fromSupabaseError(error, 'No se pudo eliminar la materia prima.');
+  assertFound(data, 'La materia prima no existe o ya fue eliminada.');
+  // No retorna nada; el controller decide 204
 };
 
 module.exports = {
   getMateriasPrimas,
   createMateriaPrima,
-  updateMateriaPrima,
+  updateMateriaPrima, 
   deleteMateriaPrima,
 };

@@ -17,6 +17,15 @@ router.get('/', authenticateToken, async (req, res) => {
   }
 });
 
+router.get('/:id', authenticateToken, async (req, res) => {
+  try {
+    const bandeja = await bandejaService.getBandejaDetalles(req.params.id);
+    res.json(bandeja);
+  } catch (err) {
+    res.status(500).json({ error: err.message || 'Ocurrió un error al obtener los detalles de la bandeja.' });
+  }
+});
+
 router.get('/tortas', authenticateToken, async (req, res) => {
     try {
         const tortas = await bandejaService.getTortasParaBandejas();

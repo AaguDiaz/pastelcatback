@@ -38,6 +38,32 @@ const getBandejas = async (page = 1, search = '') => {
   };
 };
 
+const getBandejaDetalles = async (id) => {
+  try {
+    const { data, error } = await supabase
+      .from('bandeja')
+      .select(`
+        *,
+        bandeja_tortas (
+          *,
+          torta (
+            nombre,
+            tamanio
+          )
+        )
+      `)
+      .eq('id_bandeja', id)
+      .single();
+
+    if (error) {
+      throw new Error(`Error al obtener detalles de la bandeja: ${error.message}`);
+    }
+
+    return data;
+  } catch (err) {
+    throw err;
+  }
+};
 
 const getTortasParaBandejas = async () => {
     try {
@@ -47,7 +73,6 @@ const getTortasParaBandejas = async () => {
             .select('id_torta');
 
         if (errorRecetas) {
-            console.error('Error al obtener recetas:', errorRecetas);
             throw new Error(`Error al obtener recetas: ${errorRecetas.message}`);
         }
         const idsTortasConReceta = recetas.map(r => r.id_torta);
@@ -79,7 +104,6 @@ const getTortasParaBandejas = async () => {
             `)
             .in('id_torta', idsTortasConReceta);
         if (errorTortas) {
-            console.error('Error al obtener tortas:', errorTortas);
             throw new Error(`Error al obtener tortas: ${errorTortas.message}`);
         }
         return tortas;
@@ -128,7 +152,6 @@ const createBandeja = async (bandejaData, tortasEnBandeja) => {
 
         return bandeja[0]; // Retorna la bandeja creada con su ID y demás datos
     } catch (err) {
-        console.error('Error en createBandejaInDB:', err.message);
         throw err;
     }
 };
@@ -240,6 +263,7 @@ const deleteBandeja = async (id) => {
 
 module.exports = {
     getBandejas,
+    getBandejaDetalles,
     createBandeja,
     getTortasParaBandejas,
     updateBandeja,
