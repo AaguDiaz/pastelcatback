@@ -17,6 +17,15 @@ router.get('/', authenticateToken, async (req, res) => {
   }
 });
 
+router.get('/tortas', authenticateToken, async (req, res) => {
+    try {
+        const tortas = await bandejaService.getTortasParaBandejas();
+        res.json(tortas);
+    } catch (err) {
+        res.status(500).json({ error: err.message || 'Ocurrió un error al obtener las tortas para bandejas.' });
+    }
+});
+
 router.get('/:id', authenticateToken, async (req, res) => {
   try {
     const bandeja = await bandejaService.getBandejaDetalles(req.params.id);
@@ -26,14 +35,6 @@ router.get('/:id', authenticateToken, async (req, res) => {
   }
 });
 
-router.get('/tortas', authenticateToken, async (req, res) => {
-    try {
-        const tortas = await bandejaService.getTortasParaBandejas();
-        res.json(tortas);
-    } catch (err) {
-        res.status(500).json({ error: err.message || 'Ocurrió un error al obtener las tortas para bandejas.' });
-    }
-});
 
 router.post('/', authenticateToken, upload.single('imagen'), async (req, res) => {
   try {

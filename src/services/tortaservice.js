@@ -1,4 +1,5 @@
 const supabase = require('../config/supabase');
+const {AppError, fromSupabaseError, assertFound} = require('../utils/errors');
 
 const getTortas = async (page = 1, search = '') => {
   const itemsPerPage = 8;
@@ -99,7 +100,7 @@ const deleteImage = async (imageUrl) => {
 
   if (error) {
     console.error('Error al eliminar la imagen:', error);
-    throw new Error(`Error al eliminar la imagen anterior: ${error.message}`);
+    throw fromSupabaseError(error, 'Error al eliminar la imagen anterior');
   }
 };
 
@@ -152,35 +153,55 @@ const updateTorta = async (id, { nombre, precio, tamanio, imagen, existingImage 
 };
 
 const deleteTorta = async (id) => {
-  const { data: torta, error: fetchError } = await supabase // Primero, obtenemos la torta para acceder a su imagen
+  // Check friendly usage in related tables
+  const { count: recCount, error: recErr } = await supabase
+    .from('receta')
+    .select('*', { count: 'exact', head: true })
+    .eq('id_torta', id);
+  if (recErr) throw fromSupabaseError(recErr, 'No se pudo verificar el uso de la torta en recetas.');
+  if ((recCount ?? 0) > 0) {
+    throw AppError.conflict(`No se puede eliminar: está asociada a ${recCount} receta(s).`);
+  }
+
+  const { count: banCount, error: banErr } = await supabase
+    .from('bandeja_tortas')
+    .select('*', { count: 'exact', head: true })
+    .eq('id_torta', id);
+  if (banErr) throw fromSupabaseError(banErr, 'No se pudo verificar el uso de la torta en bandejas.');
+  if ((banCount ?? 0) > 0) {
+    throw AppError.conflict(`No se puede eliminar: está incluida en ${banCount} bandeja(s).`);
+  }
+
+  const { count: pedCount, error: pedErr } = await supabase
+    .from('pedido_detalles')
+    .select('*', { count: 'exact', head: true })
+    .eq('id_torta', id);
+  if (pedErr) throw fromSupabaseError(pedErr, 'No se pudo verificar el uso de la torta en pedidos.');
+  if ((pedCount ?? 0) > 0) {
+    throw AppError.conflict(`No se puede eliminar: está utilizada en ${pedCount} pedido(s).`);
+  }
+
+  const { data: torta, error: fetchError } = await supabase
     .from('torta')
     .select('imagen')
     .eq('id_torta', id)
     .single();
 
-  if (fetchError) {
-    throw new Error(`Error al obtener la torta para eliminar: ${fetchError.message}`);
-  }
+  if (fetchError) throw fromSupabaseError(fetchError, 'No se pudo obtener la torta para eliminarla.');
+  assertFound(torta, 'La torta no existe o ya fue eliminada.');
 
-  if (!torta) {
-    throw new Error('Torta no encontrada');
-  }
-
-  // Eliminar la imagen del bucket si existe
   if (torta.imagen) {
     await deleteImage(torta.imagen);
   }
 
-  // Eliminar la torta de la base de datos
-  const { error: deleteError } = await supabase
+  const { data, error: deleteError } = await supabase
     .from('torta')
     .delete()
-    .eq('id_torta', id);
+    .eq('id_torta', id)
+    .select('id_torta');
 
-  if (deleteError) {
-    throw new Error(`Error al eliminar la torta: ${deleteError.message}`);
-  }
-
+  if (deleteError)throw fromSupabaseError(deleteError, 'No se pudo eliminar la torta.');
+  assertFound(data,'La torta no existe o ya fue eliminada.')
   return true;
 };
 

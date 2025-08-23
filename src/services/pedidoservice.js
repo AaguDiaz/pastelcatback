@@ -1,4 +1,5 @@
 const supabase = require('../config/supabase');
+const { AppError, fromSupabaseError, assertFound } = require('../utils/errors');
 
 const ITEMS_PER_PAGE = 15;
 const ESTADO_PENDIENTE = 'pendiente';
@@ -183,8 +184,14 @@ const updatePedido = async (id, datos) => {
     throw new Error('Faltan datos del pedido');
   }
 
-  await supabase.from('pedido_detalles').delete().eq('id_pedido', id);
+  const { error: detDelErr } = await supabase
+    .from('pedido_detalles')
+    .delete()
+    .eq('id_pedido', id);
 
+  if (detDelErr) {
+    throw fromSupabaseError(detDelErr, 'No se pudieron eliminar los detalles del pedido.');
+  }
   let total = 0;
   let totalItems = 0;
   const detalles = [];
