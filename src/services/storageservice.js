@@ -1,5 +1,5 @@
-const  supabase  = require('../config/supabase'); // Asegúrate de que tu cliente de Supabase esté configurado y exportado aquí
-
+const  supabase  = require('../config/supabase'); 
+const { fromSupabaseError } = require('../utils/errors');
 
 const uploadImage = async (file,  bucket_name) => {
   if (!file) {
@@ -45,10 +45,8 @@ const deleteImage = async (imageUrl, bucket_name) => {
     .remove([filePath]);
 
   if (error) {
-    throw new Error(`Error al eliminar la imagen del bucket: ${error.message}`);
+    throw fromSupabaseError(error, 'Error al eliminar la imagen del bucket');
   }
-
-  console.log(`✅ Imagen eliminada: ${filePath} del bucket ${bucket_name}`);
 };
 
 module.exports = {

@@ -1,5 +1,6 @@
 const supabase = require('../config/supabase');
 const storagedeleteImage = require('./storageservice').deleteImage;
+const {AppError, fromSupabaseError, assertFound} = require('../utils/errors');
 
 const getBandejas = async (page = 1, search = '') => {
   const itemsPerPage = 8;
@@ -38,6 +39,35 @@ const getBandejas = async (page = 1, search = '') => {
   };
 };
 
+const getBandejaDetalles = async (id) => {
+  if(!Number.isFinite(id)) {
+    throw new Error('ID de bandeja inválido.');
+  }
+  try {
+    const { data, error } = await supabase
+      .from('bandeja')
+      .select(`
+        *,
+        bandeja_tortas (
+          *,
+          torta (
+            nombre,
+            tamanio
+          )
+        )
+      `)
+      .eq('id_bandeja', id)
+      .single();
+
+    if (error) {
+      throw new Error(`Error al obtener detalles de la bandeja: ${error.message}`);
+    }
+
+    return data;
+  } catch (err) {
+    throw err;
+  }
+};
 
 const getTortasParaBandejas = async () => {
     try {
@@ -47,7 +77,6 @@ const getTortasParaBandejas = async () => {
             .select('id_torta');
 
         if (errorRecetas) {
-            console.error('Error al obtener recetas:', errorRecetas);
             throw new Error(`Error al obtener recetas: ${errorRecetas.message}`);
         }
         const idsTortasConReceta = recetas.map(r => r.id_torta);
@@ -79,7 +108,6 @@ const getTortasParaBandejas = async () => {
             `)
             .in('id_torta', idsTortasConReceta);
         if (errorTortas) {
-            console.error('Error al obtener tortas:', errorTortas);
             throw new Error(`Error al obtener tortas: ${errorTortas.message}`);
         }
         return tortas;
@@ -128,7 +156,6 @@ const createBandeja = async (bandejaData, tortasEnBandeja) => {
 
         return bandeja[0]; // Retorna la bandeja creada con su ID y demás datos
     } catch (err) {
-        console.error('Error en createBandejaInDB:', err.message);
         throw err;
     }
 };
@@ -156,7 +183,7 @@ const updateBandeja = async ({ id_bandeja, nombre, precio, tamanio, imagenUrl, t
     .eq('id_bandeja', id_bandeja);
 
   if (deleteError) {
-    throw new Error(`Error al limpiar bandeja_tortas: ${deleteError.message}`);
+    throw fromSupabaseError(deleteError, 'Error al eliminar las tortas de la bandeja.');
   }
 
   if (tortas.length > 0) {
@@ -199,19 +226,24 @@ const getBandejaImageUrl = async (bandejaId) => {
 };
 
 const deleteBandeja = async (id) => {
+  const { count, error: countErr } = await supabase
+    .from('pedido_detalles')
+    .select('*', { count: 'exact', head: true })
+    .eq('id_bandeja', id);
+  if (countErr) throw fromSupabaseError(countErr, 'No se pudo verificar el uso de la bandeja.');
+  if ((count ?? 0) > 0) {
+    throw AppError.conflict(`No se puede eliminar: está incluida en ${count} pedido(s).`);
+  }
+
+
   const { data: bandeja, error: fetchError } = await supabase
     .from('bandeja')
     .select('imagen')
     .eq('id_bandeja', id)
     .single();
 
-  if (fetchError) {
-    throw new Error(`Error al obtener la bandeja: ${fetchError.message}`);
-  }
-
-  if (!bandeja) {
-    throw new Error('Bandeja no encontrada.');
-  }
+  if (fetchError) throw fromSupabaseError(fetchError, 'No se pudo obtener la bandeja.');
+  assertFound(bandeja, 'Bandeja no encontrada.');
 
   const { error: deleteTortasError } = await supabase
     .from('bandeja_tortas')
@@ -219,27 +251,30 @@ const deleteBandeja = async (id) => {
     .eq('id_bandeja', id);
 
   if (deleteTortasError) {
-    throw new Error(`Error al eliminar las tortas de la bandeja: ${deleteTortasError.message}`);
+    throw fromSupabaseError(deleteTortasError, 'No se puedo eliminar las tortas de la bandeja.');
   }
 
   if (bandeja.imagen) {
     await storagedeleteImage(bandeja.imagen, 'bandejas-imagen');
   }
 
-  const { error: deleteBandejaError } = await supabase
+  const { data, error: deleteBandejaError } = await supabase
     .from('bandeja')
     .delete()
-    .eq('id_bandeja', id);
+    .eq('id_bandeja', id)
+    .select('id_bandeja');
+
 
   if (deleteBandejaError) {
-    throw new Error(`Error al eliminar la bandeja: ${deleteBandejaError.message}`);
+    throw fromSupabaseError(deleteBandejaError, 'No se pudo eliminar la bandeja.');
   }
 
-  return true;
+  assertFound(data, 'Bandeja no existe o ya fue eliminada');
 };
 
 module.exports = {
     getBandejas,
+    getBandejaDetalles,
     createBandeja,
     getTortasParaBandejas,
     updateBandeja,

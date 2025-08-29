@@ -1,4 +1,5 @@
 const supabase = require('../config/supabase')
+const {fromSupabaseError, assertFound} = require('../utils/errors');
 
 // Obtener tortas (solo id y nombre)
 const obtenerTortas = async () => {
@@ -165,7 +166,7 @@ const updateReceta = async (id_receta, { porciones, ingredientes }) => {
     .delete()
     .eq('id_receta', id_receta);
 
-  if (errorDelete) throw errorDelete;
+  if (errorDelete) throw fromSupabaseError(errorDelete, 'No se pudieron eliminar los ingredientes previos.');
 
   // 3. Insertar la nueva lista de ingredientes
   const ingredientesPreparados = ingredientes.map((ing) => ({
@@ -191,15 +192,16 @@ const deleteReceta = async (id_receta) => {
     .delete()
     .eq('id_receta', id_receta);
 
-  if (errorIngredientes) throw errorIngredientes;
+  if (errorIngredientes) throw fromSupabaseError(errorIngredientes, 'No se pudieron eliminar los ingredientes de la receta.');
 
   // 2. Eliminar la receta principal
   const { error: errorReceta } = await supabase
     .from('receta')
     .delete()
-    .eq('id_receta', id_receta);
+    .eq('id_receta', id_receta)
+    .select('id_receta'); 
 
-  if (errorReceta) throw errorReceta;
+  if (errorReceta) throw fromSupabaseError(errorReceta, 'No se pudo eliminar la receta.');
 
   return { mensaje: 'Receta eliminada correctamente' };
 };

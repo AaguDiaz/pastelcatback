@@ -26,6 +26,16 @@ router.get('/tortas', authenticateToken, async (req, res) => {
     }
 });
 
+router.get('/:id', authenticateToken, async (req, res) => {
+  try {
+    const bandeja = await bandejaService.getBandejaDetalles(req.params.id);
+    res.json(bandeja);
+  } catch (err) {
+    res.status(500).json({ error: err.message || 'Ocurrió un error al obtener los detalles de la bandeja.' });
+  }
+});
+
+
 router.post('/', authenticateToken, upload.single('imagen'), async (req, res) => {
   try {
     const { nombre, precio, tamanio, tortas } = req.body;
