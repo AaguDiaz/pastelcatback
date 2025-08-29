@@ -1,7 +1,7 @@
 const supabase = require('../config/supabase');
 const { AppError, fromSupabaseError, assertFound } = require('../utils/errors');
 
-const ITEMS_PER_PAGE = 15;
+const ITEMS_PER_PAGE = 10;
 const ESTADO_PENDIENTE = 'pendiente';
 
 const fetchEstadoId = async (nombre) => {
@@ -23,26 +23,39 @@ const getPedidos = async (page = 1, estado = null) => {
   let query = supabase
     .from('pedido')
     .select(
-      // devolvemos total_final como total para que el front no cambie
-      'id, fecha_creacion, fecha_entrega, total_final, estado:estado(estado)',
+      `
+      id,
+      fecha_entrega,
+      total_final,
+      observaciones,
+      cliente:cliente ( nombre ),
+      estado:estado ( estado )
+      `,
       { count: 'exact' }
     )
     .range(start, end)
     .order('fecha_creacion', { ascending: false });
 
   if (estado) {
-    // permitir filtrar por id numérico o por nombre del estado
     const idEstado = isNaN(+estado) ? await fetchEstadoId(estado) : +estado;
     query = query.eq('id_estado', idEstado);
   }
 
   const { data, error, count } = await query;
-  if (error) {
-    throw new Error('Error al obtener pedidos');
-  }
+  if (error) throw new Error('Error al obtener pedidos');
+
+  // aplanar: poner "nombre" arriba, no anidado bajo cliente
+  const items = (data || []).map((row) => ({
+    id: row.id,
+    nombre: row?.cliente?.nombre ?? null,
+    fecha_entrega: row.fecha_entrega,
+    total_final: row.total_final,
+    observaciones: row.observaciones,
+    estado: row?.estado?.estado ?? null,
+  }));
 
   return {
-    data: data || [],
+    data: items,
     totalPages: Math.ceil((count || 0) / ITEMS_PER_PAGE),
     currentPage: page,
   };
@@ -51,13 +64,49 @@ const getPedidos = async (page = 1, estado = null) => {
 const getPedidoById = async (id) => {
   const { data, error } = await supabase
     .from('pedido')
-    .select('id, fecha_creacion, fecha_entrega, total_final, estado:estado(estado)', { count: 'exact' })
+    .select(
+      `
+      id,
+      fecha_entrega,
+      total_final,
+      observaciones,
+      cliente:cliente ( nombre ),
+      estado:estado ( estado )
+      `
+    )
     .eq('id', id)
     .single();
 
-  if (error || !data) {
-    throw new Error('Pedido no encontrado');
-  }
+  if (error || !data) throw new Error('Pedido no encontrado');
+
+  return {
+    id: data.id,
+    nombre: data?.cliente?.nombre ?? null,
+    fecha_entrega: data.fecha_entrega,
+    total_final: data.total_final,
+    observaciones: data.observaciones,
+    estado: data?.estado?.estado ?? null,
+  };
+};
+
+const getPedidoByIdFull = async (id) => {
+  const { data, error } = await supabase
+    .from('pedido')
+    .select(
+      `
+      *,
+      estado:estado ( estado ),
+      cliente:cliente ( nombre ),
+      pedido_detalles ( *,
+       torta:torta ( * ),
+       bandeja:bandeja ( * )
+        )
+      `
+    )
+    .eq('id', id)
+    .single();
+
+  if (error || !data) throw new Error('Pedido no encontrado');
 
   return data;
 };
@@ -166,7 +215,7 @@ const createPedido = async ({
 
 const updatePedido = async (id, datos) => {
   const pedido = await getPedidoById(id);
-  if (pedido.estado.estado !== ESTADO_PENDIENTE) {
+  if (pedido.estado !== ESTADO_PENDIENTE) {
     throw new Error('Solo se puede editar un pedido pendiente');
   }
 
@@ -273,40 +322,91 @@ const updatePedido = async (id, datos) => {
   return pedidoActualizado;
 };
 
-const updateEstado = async (id, nuevoEstado) => {
-  const pedido = await getPedidoById(id);
-  const estadoActual = pedido.estado.estado;
-
+const updateEstado = async (id, idEstadoNuevo) => {
+  const mapLabelToId = { pendiente: 1, confirmado: 2, cerrado: 3, cancelado: 4 };
   const transiciones = {
-    pendiente: ['confirmado', 'cancelado'],
-    confirmado: ['entregado', 'cancelado'],
+  1: [2, 4], // pendiente -> confirmado | cancelado
+  2: [3, 4], // confirmado -> cerrado | cancelado
+  3: [], // cerrado -> no permitido
+  4: [], // cancelado -> no permitido
   };
 
-  if (!transiciones[estadoActual] || !transiciones[estadoActual].includes(nuevoEstado)) {
-    throw new Error('Transición de estado no permitida');
+  const pedido = await getPedidoById(id);
+  const estadoActualStr =
+  (pedido?.estado && typeof pedido.estado === 'object')
+  ? pedido.estado.estado
+  : pedido?.estado;
+  const idEstadoActual = mapLabelToId[String(estadoActualStr || '').toLowerCase().trim()];
+
+  if (!idEstadoActual) {
+  throw new Error('Estado actual inválido en el pedido');
+  }
+  if (!transiciones[idEstadoActual]?.includes(idEstadoNuevo)) {
+  throw new Error('Transición de estado no permitida');
   }
 
-  const idNuevoEstado = await fetchEstadoId(nuevoEstado);
-
   const { data, error } = await supabase
-    .from('pedido')
-    .update({ id_estado: idNuevoEstado })
-    .eq('id', id)
-    .select()
-    .single();
+  .from('pedido')
+  .update({
+  id_estado: idEstadoNuevo,
+  update_at: new Date().toISOString(),
+  })
+  .eq('id', id)
+  .select()
+  .single();
 
   if (error || !data) {
-    throw new Error('Error al actualizar estado');
+  throw new Error('Error al actualizar estado');
   }
 
   return data;
 };
 
+const deletePedido = async (id) => {
+  // Trae el pedido y valida estado actual
+  const pedido = await getPedidoById(id);
+
+  const estadoActual =
+  (pedido?.estado && typeof pedido.estado === 'object')
+  ? pedido.estado.estado
+  : pedido?.estado;
+
+  if (String(estadoActual || '').toLowerCase().trim() !== 'pendiente') {
+    throw new Error('Solo se puede eliminar un pedido pendiente');
+  }
+
+  // Elimina los detalles relacionados primero
+  const { error: detDelErr } = await supabase
+  .from('pedido_detalles')
+  .delete()
+  .eq('id_pedido', id);
+
+  if (detDelErr) {
+    throw new Error('No se pudieron eliminar los detalles del pedido.');
+  }
+
+  // Elimina el pedido
+  const { data: pedidoEliminado, error: delErr } = await supabase
+  .from('pedido')
+  .delete()
+  .eq('id', id)
+  .select()
+  .single();
+
+  if (delErr || !pedidoEliminado) {
+    throw new Error('Error al eliminar el pedido');
+  }
+
+  return pedidoEliminado;
+};
+
 module.exports = {
   getPedidos,
   getPedidoById,
+  getPedidoByIdFull,
   createPedido,
   updatePedido,
   updateEstado,
+  deletePedido,
 };
 
