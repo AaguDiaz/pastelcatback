@@ -1,4 +1,4 @@
-const express = require('express');
+﻿const express = require('express');
 const {sendError, AppError} = require('./utils/errors');
 const cors = require('cors');
 require('dotenv').config();
@@ -7,10 +7,11 @@ const app = express();
 
 // Configura CORS
 app.use(cors({
-  origin: process.env.CORS_ORIGIN ||'https://pastelcat.vercel.app',//   'http://localhost:3000', //
+  origin: process.env.CORS_ORIGIN ||'https://pastelcat.vercel.app',//'http://localhost:3000', //   
   methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
   allowedHeaders: ['Content-Type', 'Authorization'],
 }));
+
 
 // Middleware para parsear JSON
 app.use(express.json());
@@ -24,6 +25,7 @@ const bandejasRoutes = require('./routes/bandeja');
 const pedidosRoutes = require('./routes/pedido');
 const clientesRoutes = require('./routes/cliente');
 const productosRoutes = require('./routes/producto');
+const dashboardRoutes = require('./routes/dashboard');
 
 app.use('/auth', authRoutes);
 app.use('/materias-primas', materiasPrimasRoutes);
@@ -33,6 +35,7 @@ app.use('/bandejas', bandejasRoutes);
 app.use('/pedidos', pedidosRoutes);
 app.use('/clientes', clientesRoutes);
 app.use('/productos', productosRoutes);
+app.use('/dashboard', dashboardRoutes);
 
 // Ruta de prueba
 app.get('/', (req, res) => {
