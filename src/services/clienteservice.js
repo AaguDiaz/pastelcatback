@@ -1,16 +1,16 @@
 const supabase = require('../config/supabase');
 
-const getClientes = async ({ activo = null, page = 1, pageSize = 10, search = '' }) => {
+const getClientes = async ({ isActive = null, page = 1, pageSize = 10, search = '' }) => {
   const start = (page - 1) * pageSize;
   const end = start + pageSize - 1;
 
   let query = supabase
-    .from('cliente')
+    .from('perfil')
     .select('*', { count: 'exact' })
     .range(start, end);
 
-  if (activo !== null) {
-    query = query.eq('activo', activo);
+  if (typeof isActive === 'boolean') {
+    query = query.eq('is_active', isActive);
   }
 
   if (search) {

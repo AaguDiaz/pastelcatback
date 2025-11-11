@@ -1,4 +1,4 @@
-﻿const supabase = require('../config/supabase');
+const supabase = require('../config/supabase');
 const { AppError } = require('../utils/errors');
 
 const DEFAULT_RANGE_DAYS = 30;
@@ -130,16 +130,16 @@ const fetchPedidos = async (startISO, endISO) => {
       fecha_creacion,
       fecha_entrega,
       total_final,
-      id_cliente,
+      id_perfil,
       id_estado,
-      cliente:cliente (
-        id_cliente,
+      perfil:perfil (
+        id_perfil,
         nombre,
         email,
         telefono,
         direccion,
         observaciones,
-        activo
+        is_active
       ),
       estado:estado (
         id_estado,
@@ -168,16 +168,16 @@ const fetchPedidos = async (startISO, endISO) => {
       fecha_creacion,
       fecha_entrega,
       total_final,
-      id_cliente,
+      id_perfil,
       id_estado,
-      cliente:cliente (
-        id_cliente,
+      perfil:perfil (
+        id_perfil,
         nombre,
         email,
         telefono,
         direccion,
         observaciones,
-        activo
+        is_active
       ),
       estado:estado (
         id_estado,
@@ -393,11 +393,11 @@ const buildTopClients = (pedidos) => {
 
   pedidos.forEach((pedido) => {
     const cliente = pedido?.cliente || {};
-    const id = pedido?.id_cliente ?? cliente?.id_cliente ?? cliente?.id ?? null;
+    const id = pedido?.id_perfil ?? cliente?.id_perfil ?? cliente?.id ?? null;
     if (!id) return;
 
     const entry = map.get(id) || {
-      id_cliente: id,
+      id_perfil: id,
       nombre: cliente?.nombre || `Cliente ${id}`,
       email: cliente?.email ?? cliente?.correo ?? null,
       totalGastado: 0,
@@ -415,7 +415,7 @@ const buildTopClients = (pedidos) => {
     .sort((a, b) => b.totalGastado - a.totalGastado)
     .slice(0, 10)
     .map((item) => ({
-      id_cliente: item.id_cliente,
+      id_perfil: item.id_perfil,
       nombre: item.nombre,
       email: item.email || null,
       totalGastado: round(item.totalGastado),

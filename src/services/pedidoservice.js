@@ -1,5 +1,5 @@
 const supabase = require('../config/supabase');
-const { AppError, fromSupabaseError, assertFound } = require('../utils/errors');
+const { fromSupabaseError} = require('../utils/errors');
 
 const ITEMS_PER_PAGE = 10;
 const ESTADO_PENDIENTE = 'pendiente';
@@ -28,7 +28,7 @@ const getPedidos = async (page = 1, estado = null) => {
       fecha_entrega,
       total_final,
       observaciones,
-      cliente:cliente ( nombre ),
+      perfil:perfil ( nombre ),
       estado:estado ( estado )
       `,
       { count: 'exact' }
@@ -47,7 +47,7 @@ const getPedidos = async (page = 1, estado = null) => {
   // aplanar: poner "nombre" arriba, no anidado bajo cliente
   const items = (data || []).map((row) => ({
     id: row.id,
-    nombre: row?.cliente?.nombre ?? null,
+    nombre: row?.perfil?.nombre ?? null,
     fecha_entrega: row.fecha_entrega,
     total_final: row.total_final,
     observaciones: row.observaciones,
@@ -70,7 +70,7 @@ const getPedidoById = async (id) => {
       fecha_entrega,
       total_final,
       observaciones,
-      cliente:cliente ( nombre ),
+      perfil:perfil ( nombre ),
       estado:estado ( estado )
       `
     )
@@ -81,7 +81,7 @@ const getPedidoById = async (id) => {
 
   return {
     id: data.id,
-    nombre: data?.cliente?.nombre ?? null,
+    nombre: data?.perfil?.nombre ?? null,
     fecha_entrega: data.fecha_entrega,
     total_final: data.total_final,
     observaciones: data.observaciones,
@@ -96,7 +96,7 @@ const getPedidoByIdFull = async (id) => {
       `
       *,
       estado:estado ( estado ),
-      cliente:cliente ( nombre ),
+      perfil:perfil ( nombre ),
       pedido_detalles ( *,
        torta:torta ( * ),
        bandeja:bandeja ( * )
@@ -112,7 +112,7 @@ const getPedidoByIdFull = async (id) => {
 };
 
 const createPedido = async ({
-  id_cliente,
+  id_perfil,
   fecha_entrega,
   tipo_entrega,                 // varchar en la tabla
   tortas = [],
@@ -120,7 +120,7 @@ const createPedido = async ({
   observaciones = null,
   direccion_entrega = null,
 }) => {
-  if (!id_cliente || !fecha_entrega || !tipo_entrega) {
+  if (!id_perfil || !fecha_entrega || !tipo_entrega) {
     throw new Error('Faltan datos del pedido');
   }
 
@@ -180,7 +180,7 @@ const createPedido = async ({
   const { data: pedidoData, error: pedidoError } = await supabase
     .from('pedido')
     .insert({
-      id_cliente,
+      id_perfil,
       fecha_creacion: new Date().toISOString(),
       fecha_entrega,
       id_estado: idEstadoPendiente,
@@ -220,7 +220,7 @@ const updatePedido = async (id, datos) => {
   }
 
   const {
-    id_cliente,
+    id_perfil,
     fecha_entrega,
     tipo_entrega,            
     tortas = [],
@@ -229,7 +229,7 @@ const updatePedido = async (id, datos) => {
     direccion_entrega = null,
   } = datos;
 
-  if (!id_cliente || !fecha_entrega || !tipo_entrega) {
+  if (!id_perfil || !fecha_entrega || !tipo_entrega) {
     throw new Error('Faltan datos del pedido');
   }
 
@@ -294,7 +294,7 @@ const updatePedido = async (id, datos) => {
   const { data: pedidoActualizado, error: updateError } = await supabase
     .from('pedido')
     .update({
-      id_cliente,
+      id_perfil,
       fecha_entrega,
       tipo_entrega,
       total_items: totalItems,
