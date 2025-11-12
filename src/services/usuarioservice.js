@@ -91,7 +91,7 @@ const formatPerfil = (perfil, emailMap) => ({
   has_account: Boolean(perfil.id),
   email: perfil.id ? emailMap?.get(perfil.id) ?? null : null,
   created_at: perfil.created_at ?? null,
-  updated_at: perfil.updated_at ?? perfil.update_at ?? null,
+  update_at: perfil.update_at ?? perfil.update_at ?? null,
 });
 
 const createResetToken = async (userId, tipo) => {
@@ -297,7 +297,7 @@ const updateUsuario = async (idPerfil, { nombre, dni, telefono, direccion, is_ac
 
   const timestamp = new Date().toISOString();
   updates.update_at = timestamp;
-  updates.updated_at = timestamp;
+  updates.update_at = timestamp;
 
   const { data, error } = await supabase
     .from('perfil')
@@ -325,7 +325,7 @@ const softDeleteUsuario = async (idPerfil) => {
     .update({
       is_active: false,
       update_at: timestamp,
-      updated_at: timestamp,
+      update_at: timestamp,
     })
     .eq('id_perfil', idPerfil)
     .select('*')

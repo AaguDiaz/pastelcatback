@@ -15,7 +15,7 @@ const getSupabaseAdmin = () => {
   }
 
   if (!serviceRoleKey) {
-    throw new Error('Falta la variable de entorno SUPABASE_SERVICE_ROLE_KEY');
+    throw new Error('Falta la variable de entorno SUPABASE_SERVICE_ROLE_KEYy');
   }
 
   cachedClient = createClient(supabaseUrl, serviceRoleKey, {

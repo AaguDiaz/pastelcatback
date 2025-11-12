@@ -36,6 +36,20 @@ const login = async (email, password) => {
     }
 
     requiresPasswordReset = Array.isArray(tokens) && tokens.length > 0;
+
+    const { data: perfil, error: perfilError } = await supabase
+      .from('perfil')
+      .select('is_active')
+      .eq('id', userId)
+      .maybeSingle();
+
+    if (perfilError) {
+      throw fromSupabaseError(perfilError, 'No se pudo validar el estado del usuario.');
+    }
+
+    if (perfil && perfil.is_active === false) {
+      throw AppError.forbidden('Tu usuario se encuentra dado de baja. Comunicate con un administrador.');
+    }
   }
 
   return {
