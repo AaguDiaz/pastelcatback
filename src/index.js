@@ -28,6 +28,7 @@ const productosRoutes = require('./routes/producto');
 const dashboardRoutes = require('./routes/dashboard');
 const usuariosRoutes = require('./routes/usuario');
 const gruposRoutes = require('./routes/grupos');
+const permisosRoutes = require('./routes/permisos');
 
 app.use('/auth', authRoutes);
 app.use('/materias-primas', materiasPrimasRoutes);
@@ -40,6 +41,7 @@ app.use('/productos', productosRoutes);
 app.use('/dashboard', dashboardRoutes);
 app.use('/usuarios', usuariosRoutes);
 app.use('/grupos', gruposRoutes);
+app.use('/permisos', permisosRoutes);
 
 // Ruta de prueba
 app.get('/', (req, res) => {
