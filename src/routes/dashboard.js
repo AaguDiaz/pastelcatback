@@ -1,10 +1,12 @@
 ﻿const express = require('express');
 const router = express.Router();
 const { authenticateToken } = require('../middleware/auth');
+const { requirePermissions } = require('../middleware/permissions');
+const PERMISSIONS = require('../utils/permissionSlugs');
 const { AppError } = require('../utils/errors');
 const { getDashboardData } = require('../services/dashboardservice');
 
-router.get('/', authenticateToken, async (req, res) => {
+router.get('/', authenticateToken, requirePermissions(PERMISSIONS.REPORTES.VER), async (req, res) => {
   try {
     const { startDate, endDate } = req.query;
     const data = await getDashboardData({ startDate, endDate });

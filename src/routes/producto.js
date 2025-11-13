@@ -1,9 +1,11 @@
 const express = require('express');
 const router = express.Router();
 const { authenticateToken } = require('../middleware/auth');
+const { requirePermissions } = require('../middleware/permissions');
+const PERMISSIONS = require('../utils/permissionSlugs');
 const { getProductos } = require('../services/productoservice');
 
-router.get('/', authenticateToken, async (req, res) => {
+router.get('/', authenticateToken, requirePermissions(PERMISSIONS.ARTICULOS.VER), async (req, res) => {
   try {
     const { tipo, page = 1, pageSize = 6, search = '' } = req.query;
     if (!tipo) {

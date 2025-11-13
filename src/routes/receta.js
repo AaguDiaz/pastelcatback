@@ -1,6 +1,8 @@
 const express = require('express')
 const router = express.Router()
 const { authenticateToken } = require('../middleware/auth');
+const { requirePermissions } = require('../middleware/permissions');
+const PERMISSIONS = require('../utils/permissionSlugs');
 const {
   obtenerTortas,
   obtenerMateriasPrimas,
@@ -13,7 +15,7 @@ const {
 } = require('../services/recetaservice')
 
 // GET /tortas
-router.get('/tortas', authenticateToken, async (req, res) => {
+router.get('/tortas', authenticateToken, requirePermissions(PERMISSIONS.RECETAS.VER), async (req, res) => {
   try {
     const tortas = await obtenerTortas()
     res.json(tortas)
@@ -23,7 +25,7 @@ router.get('/tortas', authenticateToken, async (req, res) => {
 })
 
 // GET /ingredientes
-router.get('/ingredientes', authenticateToken, async (req, res) => {
+router.get('/ingredientes', authenticateToken, requirePermissions(PERMISSIONS.RECETAS.VER), async (req, res) => {
   try {
     const ingredientes = await obtenerMateriasPrimas()
     res.json(ingredientes)
@@ -32,7 +34,7 @@ router.get('/ingredientes', authenticateToken, async (req, res) => {
   }
 })
 
-router.post('/', authenticateToken, async (req, res) => {
+router.post('/', authenticateToken, requirePermissions(PERMISSIONS.RECETAS.AGREGAR), async (req, res) => {
   try {
     const { id_torta, porciones, ingredientes } = req.body;
 
@@ -49,7 +51,7 @@ router.post('/', authenticateToken, async (req, res) => {
 });
 
 // GET / para obtener todas las recetas para la tabla de gestión
-router.get('/', authenticateToken, async (req, res) => {
+router.get('/', authenticateToken, requirePermissions(PERMISSIONS.RECETAS.VER), async (req, res) => {
   try {
     const recetas = await getRecetas();
     res.json(recetas);
@@ -59,7 +61,7 @@ router.get('/', authenticateToken, async (req, res) => {
 });
 
 // GET /:id/ingredientes para obtener los ingredientes de una receta específica
-router.get('/:id/ingredientes', authenticateToken, async (req, res) => {
+router.get('/:id/ingredientes', authenticateToken, requirePermissions(PERMISSIONS.RECETAS.VER), async (req, res) => {
   try {
     const { id } = req.params;
     const ingredientes = await getIngredientesReceta(id);
@@ -70,7 +72,7 @@ router.get('/:id/ingredientes', authenticateToken, async (req, res) => {
 });
 
 // PUT /:id para actualizar una receta
-router.put('/:id', authenticateToken, async (req, res) => {
+router.put('/:id', authenticateToken, requirePermissions(PERMISSIONS.RECETAS.MODIFICAR), async (req, res) => {
   try {
     const { id } = req.params;
     const { porciones, ingredientes } = req.body;
@@ -88,7 +90,7 @@ router.put('/:id', authenticateToken, async (req, res) => {
 });
 
 // DELETE /:id para eliminar una receta
-router.delete('/:id', authenticateToken, async (req, res) => {
+router.delete('/:id', authenticateToken, requirePermissions(PERMISSIONS.RECETAS.ELIMINAR), async (req, res) => {
   try {
     const { id } = req.params;
     const resultado = await deleteReceta(id);
@@ -98,7 +100,7 @@ router.delete('/:id', authenticateToken, async (req, res) => {
   }
 });
 
-router.get('/detalles/torta/:id_torta', authenticateToken, async (req, res) => {
+router.get('/detalles/torta/:id_torta', authenticateToken, requirePermissions(PERMISSIONS.RECETAS.VER), async (req, res) => {
   try {
     const { id_torta } = req.params;
     const detalles = await getRecetaCompletaPorTorta(id_torta);

@@ -3,11 +3,13 @@ const router = express.Router();
 const multer = require('multer');
 
 const { authenticateToken } = require('../middleware/auth'); // Middleware de autenticación 
+const { requirePermissions } = require('../middleware/permissions');
+const PERMISSIONS = require('../utils/permissionSlugs');
 const bandejaService = require('../services/bandejaservice'); // Importar el nuevo servicio
 const storageService = require('../services/storageservice'); // Importar el servicio de almacenamiento
 const upload = multer({storage: multer.memoryStorage()}); // Configuración de multer para manejar archivos
 
-router.get('/', authenticateToken, async (req, res) => {
+router.get('/', authenticateToken, requirePermissions(PERMISSIONS.BANDEJAS.VER), async (req, res) => {
   try {
     const { page = 1, search = '' } = req.query;
     const result = await bandejaService.getBandejas(parseInt(page), search);
@@ -17,7 +19,7 @@ router.get('/', authenticateToken, async (req, res) => {
   }
 });
 
-router.get('/tortas', authenticateToken, async (req, res) => {
+router.get('/tortas', authenticateToken, requirePermissions(PERMISSIONS.BANDEJAS.VER), async (req, res) => {
     try {
         const tortas = await bandejaService.getTortasParaBandejas();
         res.json(tortas);
@@ -26,7 +28,7 @@ router.get('/tortas', authenticateToken, async (req, res) => {
     }
 });
 
-router.get('/:id', authenticateToken, async (req, res) => {
+router.get('/:id', authenticateToken, requirePermissions(PERMISSIONS.BANDEJAS.VER), async (req, res) => {
   try {
     const bandeja = await bandejaService.getBandejaDetalles(req.params.id);
     res.json(bandeja);
@@ -36,7 +38,7 @@ router.get('/:id', authenticateToken, async (req, res) => {
 });
 
 
-router.post('/', authenticateToken, upload.single('imagen'), async (req, res) => {
+router.post('/', authenticateToken, requirePermissions(PERMISSIONS.BANDEJAS.AGREGAR), upload.single('imagen'), async (req, res) => {
   try {
     const { nombre, precio, tamanio, tortas } = req.body;
     if (!nombre || !precio || !tamanio) {
@@ -68,7 +70,7 @@ router.post('/', authenticateToken, upload.single('imagen'), async (req, res) =>
   }
 });
 
-router.put('/:id', authenticateToken, upload.single('imagen'), async (req, res) => {
+router.put('/:id', authenticateToken, requirePermissions(PERMISSIONS.BANDEJAS.MODIFICAR), upload.single('imagen'), async (req, res) => {
   try {
     console.log('BODY:', req.body);
     console.log('FILE:', req.file);
@@ -124,7 +126,7 @@ router.put('/:id', authenticateToken, upload.single('imagen'), async (req, res) 
   }
 });
 
-router.delete('/:id', authenticateToken, async (req, res) => {
+router.delete('/:id', authenticateToken, requirePermissions(PERMISSIONS.BANDEJAS.ELIMINAR), async (req, res) => {
   try {
     const id = parseInt(req.params.id);
    if (isNaN(id)) {

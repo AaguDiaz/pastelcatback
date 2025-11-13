@@ -1,5 +1,7 @@
 const express = require('express');
 const { authenticateToken } = require('../middleware/auth');
+const { requirePermissions } = require('../middleware/permissions');
+const PERMISSIONS = require('../utils/permissionSlugs');
 const { AppError } = require('../utils/errors');
 const {
   listGrupos,
@@ -32,7 +34,7 @@ const parsePermisoId = (raw) => {
 
 router.use(authenticateToken);
 
-router.get('/', async (req, res, next) => {
+router.get('/', requirePermissions(PERMISSIONS.USUARIO.MODIFICAR), async (req, res, next) => {
   try {
     const { page = 1, pageSize = 10, search = '' } = req.query;
     const result = await listGrupos({ page, pageSize, search });
@@ -42,7 +44,7 @@ router.get('/', async (req, res, next) => {
   }
 });
 
-router.post('/', async (req, res, next) => {
+router.post('/', requirePermissions(PERMISSIONS.USUARIO.MODIFICAR), async (req, res, next) => {
   try {
     const grupo = await createGrupo(req.body || {});
     res.status(201).json(grupo);
@@ -51,7 +53,7 @@ router.post('/', async (req, res, next) => {
   }
 });
 
-router.get('/:id', async (req, res, next) => {
+router.get('/:id', requirePermissions(PERMISSIONS.USUARIO.MODIFICAR), async (req, res, next) => {
   try {
     const idGrupo = parseGrupoId(req.params.id);
     const includePermisos = String(req.query.includePermissions || 'true').toLowerCase() !== 'false';
@@ -62,7 +64,7 @@ router.get('/:id', async (req, res, next) => {
   }
 });
 
-router.put('/:id', async (req, res, next) => {
+router.put('/:id', requirePermissions(PERMISSIONS.USUARIO.MODIFICAR), async (req, res, next) => {
   try {
     const idGrupo = parseGrupoId(req.params.id);
     const grupo = await updateGrupo(idGrupo, req.body || {});
@@ -72,7 +74,7 @@ router.put('/:id', async (req, res, next) => {
   }
 });
 
-router.delete('/:id', async (req, res, next) => {
+router.delete('/:id', requirePermissions(PERMISSIONS.USUARIO.MODIFICAR), async (req, res, next) => {
   try {
     const idGrupo = parseGrupoId(req.params.id);
     await deleteGrupo(idGrupo);
@@ -82,7 +84,7 @@ router.delete('/:id', async (req, res, next) => {
   }
 });
 
-router.get('/:id/permisos', async (req, res, next) => {
+router.get('/:id/permisos', requirePermissions(PERMISSIONS.USUARIO.MODIFICAR), async (req, res, next) => {
   try {
     const idGrupo = parseGrupoId(req.params.id);
     const permisos = await listPermisosDeGrupo(idGrupo);
@@ -92,7 +94,7 @@ router.get('/:id/permisos', async (req, res, next) => {
   }
 });
 
-router.post('/:id/permisos', async (req, res, next) => {
+router.post('/:id/permisos', requirePermissions(PERMISSIONS.USUARIO.MODIFICAR), async (req, res, next) => {
   try {
     const idGrupo = parseGrupoId(req.params.id);
     const idPermiso = parsePermisoId(req.body?.id_permiso ?? req.body?.idPermiso);
@@ -103,7 +105,7 @@ router.post('/:id/permisos', async (req, res, next) => {
   }
 });
 
-router.delete('/:id/permisos/:permisoId', async (req, res, next) => {
+router.delete('/:id/permisos/:permisoId', requirePermissions(PERMISSIONS.USUARIO.MODIFICAR), async (req, res, next) => {
   try {
     const idGrupo = parseGrupoId(req.params.id);
     const idPermiso = parsePermisoId(req.params.permisoId);

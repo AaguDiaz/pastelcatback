@@ -1,6 +1,8 @@
 const express = require('express');
 const router = express.Router();
 const { authenticateToken } = require('../middleware/auth'); 
+const { requirePermissions } = require('../middleware/permissions');
+const PERMISSIONS = require('../utils/permissionSlugs');
 const {
   getMateriasPrimas,
   createMateriaPrima,
@@ -8,8 +10,7 @@ const {
   deleteMateriaPrima,
 } = require('../services/materiaprimaservice');
 
-router.get('/', authenticateToken, async (req, res) => {
-  const userId = req.user.sub;
+router.get('/', authenticateToken, requirePermissions(PERMISSIONS.MATERIA_PRIMA.VER), async (req, res) => {
   try {
     const { page = 1, search = '' } = req.query;
     const result = await getMateriasPrimas(parseInt(page), search);
@@ -19,7 +20,7 @@ router.get('/', authenticateToken, async (req, res) => {
   }
 });
 
-router.post('/', authenticateToken, async (req, res) => {
+router.post('/', authenticateToken, requirePermissions(PERMISSIONS.MATERIA_PRIMA.AGREGAR), async (req, res) => {
   try {
     const data = await createMateriaPrima(req.body);
     res.status(201).json(data);
@@ -28,7 +29,7 @@ router.post('/', authenticateToken, async (req, res) => {
   }
 });
 
-router.put('/:id', authenticateToken, async (req, res) => {
+router.put('/:id', authenticateToken, requirePermissions(PERMISSIONS.MATERIA_PRIMA.MODIFICAR), async (req, res) => {
   try {
     const data = await updateMateriaPrima(req.params.id, req.body);
     res.json(data);
@@ -37,7 +38,7 @@ router.put('/:id', authenticateToken, async (req, res) => {
   }
 });
 
-router.delete('/:id', authenticateToken, async (req, res) => {
+router.delete('/:id', authenticateToken, requirePermissions(PERMISSIONS.MATERIA_PRIMA.ELIMINAR), async (req, res) => {
   try {
     await deleteMateriaPrima(req.params.id);
     res.status(204).send();
