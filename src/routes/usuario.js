@@ -8,6 +8,12 @@ const {
   createClienteSinLogin,
   updateUsuario,
   softDeleteUsuario,
+  listGruposDeUsuario,
+  assignGrupoToUsuario,
+  removeGrupoFromUsuario,
+  listPermisosDirectosDeUsuario,
+  assignPermisoDirectoAUsuario,
+  removePermisoDirectoDeUsuario,
 } = require('../services/usuarioservice');
 
 const router = express.Router();
@@ -25,6 +31,22 @@ const parseIdPerfil = (raw) => {
   const id = Number.parseInt(raw, 10);
   if (!Number.isFinite(id) || id <= 0) {
     throw AppError.badRequest('El identificador de usuario es invalido.');
+  }
+  return id;
+};
+
+const parseIdGrupo = (raw) => {
+  const id = Number.parseInt(raw, 10);
+  if (!Number.isFinite(id) || id <= 0) {
+    throw AppError.badRequest('El identificador del grupo es invalido.');
+  }
+  return id;
+};
+
+const parseIdPermiso = (raw) => {
+  const id = Number.parseInt(raw, 10);
+  if (!Number.isFinite(id) || id <= 0) {
+    throw AppError.badRequest('El identificador del permiso es invalido.');
   }
   return id;
 };
@@ -62,6 +84,70 @@ router.post('/cliente', async (req, res, next) => {
   try {
     const cliente = await createClienteSinLogin(req.body || {});
     res.status(201).json(cliente);
+  } catch (err) {
+    next(err);
+  }
+});
+
+router.get('/:id/grupos', async (req, res, next) => {
+  try {
+    const idPerfil = parseIdPerfil(req.params.id);
+    const resultado = await listGruposDeUsuario(idPerfil);
+    res.json(resultado);
+  } catch (err) {
+    next(err);
+  }
+});
+
+router.post('/:id/grupos', async (req, res, next) => {
+  try {
+    const idPerfil = parseIdPerfil(req.params.id);
+    const idGrupo = parseIdGrupo(req.body?.id_grupo ?? req.body?.idGrupo);
+    const resultado = await assignGrupoToUsuario(idPerfil, idGrupo);
+    res.status(201).json(resultado);
+  } catch (err) {
+    next(err);
+  }
+});
+
+router.delete('/:id/grupos/:idGrupo', async (req, res, next) => {
+  try {
+    const idPerfil = parseIdPerfil(req.params.id);
+    const idGrupo = parseIdGrupo(req.params.idGrupo);
+    const resultado = await removeGrupoFromUsuario(idPerfil, idGrupo);
+    res.json(resultado);
+  } catch (err) {
+    next(err);
+  }
+});
+
+router.get('/:id/permisos', async (req, res, next) => {
+  try {
+    const idPerfil = parseIdPerfil(req.params.id);
+    const resultado = await listPermisosDirectosDeUsuario(idPerfil);
+    res.json(resultado);
+  } catch (err) {
+    next(err);
+  }
+});
+
+router.post('/:id/permisos', async (req, res, next) => {
+  try {
+    const idPerfil = parseIdPerfil(req.params.id);
+    const idPermiso = parseIdPermiso(req.body?.id_permiso ?? req.body?.idPermiso);
+    const resultado = await assignPermisoDirectoAUsuario(idPerfil, idPermiso);
+    res.status(201).json(resultado);
+  } catch (err) {
+    next(err);
+  }
+});
+
+router.delete('/:id/permisos/:idPermiso', async (req, res, next) => {
+  try {
+    const idPerfil = parseIdPerfil(req.params.id);
+    const idPermiso = parseIdPermiso(req.params.idPermiso);
+    const resultado = await removePermisoDirectoDeUsuario(idPerfil, idPermiso);
+    res.json(resultado);
   } catch (err) {
     next(err);
   }

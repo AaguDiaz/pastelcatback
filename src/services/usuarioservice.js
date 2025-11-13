@@ -25,6 +25,21 @@ const normalizePageSize = (value) => {
 
 const sanitizeString = (value) => (typeof value === 'string' ? value.trim() : '');
 
+const formatGrupoLite = (grupo) => ({
+  id_grupo: grupo.id_grupo,
+  nombre: grupo.nombre,
+  descripcion: grupo.descripcion ?? null,
+  created_at: grupo.created_at ?? null,
+});
+
+const formatPermisoLite = (permiso) => ({
+  id_permiso: permiso.id_permisos ?? permiso.id_permiso ?? permiso.id,
+  modulo: permiso.modulo,
+  accion: permiso.accion,
+  slug: permiso.slug,
+  created_at: permiso.created_at ?? null,
+});
+
 const ensureAdminClient = () => {
   try {
     return getSupabaseAdmin();
@@ -317,6 +332,250 @@ const updateUsuario = async (idPerfil, { nombre, dni, telefono, direccion, is_ac
   return formatPerfil(data, emailMap);
 };
 
+const fetchPerfilWithAccount = async (idPerfil) => {
+  const { data, error } = await supabase
+    .from('perfil')
+    .select('id_perfil, id')
+    .eq('id_perfil', idPerfil)
+    .single();
+
+  if (error) {
+    if (error.code === 'PGRST116') {
+      throw AppError.notFound('Usuario no encontrado.');
+    }
+    throw fromSupabaseError(error, 'No se pudo validar el usuario proporcionado.');
+  }
+
+  if (!data.id) {
+    throw AppError.badRequest('El usuario no tiene una cuenta logueable para asignar permisos.');
+  }
+
+  return data;
+};
+
+const ensureGrupoExists = async (idGrupo) => {
+  const { data, error } = await supabase
+    .from('grupos')
+    .select('id_grupo')
+    .eq('id_grupo', idGrupo)
+    .single();
+
+  if (error) {
+    if (error.code === 'PGRST116') {
+      throw AppError.notFound('Grupo no encontrado.');
+    }
+    throw fromSupabaseError(error, 'No se pudo validar el grupo proporcionado.');
+  }
+
+  return data;
+};
+
+const ensurePermisoExists = async (idPermiso) => {
+  const { data, error } = await supabase
+    .from('permisos')
+    .select('id_permisos')
+    .eq('id_permisos', idPermiso)
+    .single();
+
+  if (error) {
+    if (error.code === 'PGRST116') {
+      throw AppError.notFound('Permiso no encontrado.');
+    }
+    throw fromSupabaseError(error, 'No se pudo validar el permiso proporcionado.');
+  }
+
+  return data;
+};
+
+const listGruposDeUsuario = async (idPerfil) => {
+  const perfil = await fetchPerfilWithAccount(idPerfil);
+
+  const { data, error } = await supabase
+    .from('usuario_grupo')
+    .select('id_grupo')
+    .eq('id_usuario', perfil.id);
+
+  if (error) {
+    throw fromSupabaseError(error, 'No se pudieron obtener los grupos del usuario.');
+  }
+
+  const groupIds = [
+    ...new Set(
+      (data || [])
+        .map((row) => row.id_grupo)
+        .filter((id) => id !== null && id !== undefined),
+    ),
+  ];
+
+  if (!groupIds.length) {
+    return { perfil_id: perfil.id_perfil, user_id: perfil.id, grupos: [] };
+  }
+
+  const { data: grupos, error: gruposError } = await supabase
+    .from('grupos')
+    .select('*')
+    .in('id_grupo', groupIds);
+
+  if (gruposError) {
+    throw fromSupabaseError(gruposError, 'No se pudieron obtener los datos de los grupos.');
+  }
+
+  const grupoMap = new Map(grupos.map((grupo) => [grupo.id_grupo, formatGrupoLite(grupo)]));
+
+  return {
+    perfil_id: perfil.id_perfil,
+    user_id: perfil.id,
+    grupos: groupIds.map((id) => grupoMap.get(id)).filter(Boolean),
+  };
+};
+
+const assignGrupoToUsuario = async (idPerfil, idGrupo) => {
+  const perfil = await fetchPerfilWithAccount(idPerfil);
+  await ensureGrupoExists(idGrupo);
+
+  const { data: existing, error: existingError } = await supabase
+    .from('usuario_grupo')
+    .select('id_usuario_grupo')
+    .eq('id_usuario', perfil.id)
+    .eq('id_grupo', idGrupo)
+    .limit(1);
+
+  if (existingError) {
+    throw fromSupabaseError(existingError, 'No se pudo validar la asignacion del grupo.');
+  }
+
+  if (Array.isArray(existing) && existing.length > 0) {
+    throw AppError.conflict('El usuario ya pertenece a ese grupo.');
+  }
+
+  const { error } = await supabase.from('usuario_grupo').insert({ id_usuario: perfil.id, id_grupo: idGrupo });
+
+  if (error) {
+    throw fromSupabaseError(error, 'No se pudo asignar el grupo al usuario.');
+  }
+
+  return listGruposDeUsuario(idPerfil);
+};
+
+const removeGrupoFromUsuario = async (idPerfil, idGrupo) => {
+  const perfil = await fetchPerfilWithAccount(idPerfil);
+
+  const { error } = await supabase
+    .from('usuario_grupo')
+    .delete()
+    .eq('id_usuario', perfil.id)
+    .eq('id_grupo', idGrupo)
+    .select('id_usuario_grupo')
+    .single();
+
+  if (error) {
+    if (error.code === 'PGRST116') {
+      throw AppError.notFound('El usuario no pertenece a ese grupo.');
+    }
+    throw fromSupabaseError(error, 'No se pudo quitar el grupo del usuario.');
+  }
+
+  return listGruposDeUsuario(idPerfil);
+};
+
+const listPermisosDirectosDeUsuario = async (idPerfil) => {
+  const perfil = await fetchPerfilWithAccount(idPerfil);
+
+  const { data, error } = await supabase
+    .from('usuario_permiso')
+    .select('id_permiso')
+    .eq('id_usuario', perfil.id);
+
+  if (error) {
+    throw fromSupabaseError(error, 'No se pudieron obtener los permisos del usuario.');
+  }
+
+  const permisoIds = [
+    ...new Set(
+      (data || [])
+        .map((row) => row.id_permiso)
+        .filter((id) => id !== null && id !== undefined),
+    ),
+  ];
+
+  if (!permisoIds.length) {
+    return { perfil_id: perfil.id_perfil, user_id: perfil.id, permisos: [] };
+  }
+
+  const { data: permisos, error: permisosError } = await supabase
+    .from('permisos')
+    .select('*')
+    .in('id_permisos', permisoIds);
+
+  if (permisosError) {
+    throw fromSupabaseError(permisosError, 'No se pudieron obtener los datos de los permisos.');
+  }
+
+  const permisoMap = new Map(
+    permisos.map((permiso) => {
+      const key = permiso.id_permisos ?? permiso.id_permiso ?? permiso.id;
+      return [String(key), formatPermisoLite(permiso)];
+    }),
+  );
+
+  return {
+    perfil_id: perfil.id_perfil,
+    user_id: perfil.id,
+    permisos: permisoIds.map((id) => permisoMap.get(String(id))).filter(Boolean),
+  };
+};
+
+const assignPermisoDirectoAUsuario = async (idPerfil, idPermiso) => {
+  const perfil = await fetchPerfilWithAccount(idPerfil);
+  await ensurePermisoExists(idPermiso);
+
+  const { data: existing, error: existingError } = await supabase
+    .from('usuario_permiso')
+    .select('id_usuario_permiso')
+    .eq('id_usuario', perfil.id)
+    .eq('id_permiso', idPermiso)
+    .limit(1);
+
+  if (existingError) {
+    throw fromSupabaseError(existingError, 'No se pudo validar la asignacion del permiso.');
+  }
+
+  if (Array.isArray(existing) && existing.length > 0) {
+    throw AppError.conflict('El usuario ya tiene ese permiso asignado.');
+  }
+
+  const { error } = await supabase
+    .from('usuario_permiso')
+    .insert({ id_usuario: perfil.id, id_permiso: idPermiso });
+
+  if (error) {
+    throw fromSupabaseError(error, 'No se pudo asignar el permiso al usuario.');
+  }
+
+  return listPermisosDirectosDeUsuario(idPerfil);
+};
+
+const removePermisoDirectoDeUsuario = async (idPerfil, idPermiso) => {
+  const perfil = await fetchPerfilWithAccount(idPerfil);
+
+  const { error } = await supabase
+    .from('usuario_permiso')
+    .delete()
+    .eq('id_usuario', perfil.id)
+    .eq('id_permiso', idPermiso)
+    .select('id_usuario_permiso')
+    .single();
+
+  if (error) {
+    if (error.code === 'PGRST116') {
+      throw AppError.notFound('El usuario no tiene ese permiso asignado.');
+    }
+    throw fromSupabaseError(error, 'No se pudo quitar el permiso del usuario.');
+  }
+
+  return listPermisosDirectosDeUsuario(idPerfil);
+};
+
 const softDeleteUsuario = async (idPerfil) => {
   const timestamp = new Date().toISOString();
 
@@ -349,4 +608,10 @@ module.exports = {
   createClienteSinLogin,
   updateUsuario,
   softDeleteUsuario,
+  listGruposDeUsuario,
+  assignGrupoToUsuario,
+  removeGrupoFromUsuario,
+  listPermisosDirectosDeUsuario,
+  assignPermisoDirectoAUsuario,
+  removePermisoDirectoDeUsuario,
 };
