@@ -1,6 +1,5 @@
 const supabase = require('../config/supabase');
 const { AppError, fromSupabaseError } = require('../utils/errors');
-const { getPermisoById } = require('./permisoservice');
 
 const DEFAULT_PAGE_SIZE = 10;
 const MAX_PAGE_SIZE = 50;
@@ -34,6 +33,23 @@ const formatPermisoLite = (permiso) => ({
   slug: permiso.slug,
   created_at: permiso.created_at ?? null,
 });
+
+const fetchPermisoRow = async (idPermiso) => {
+  const { data, error } = await supabase
+    .from('permisos')
+    .select('*')
+    .eq('id_permisos', idPermiso)
+    .single();
+
+  if (error) {
+    if (error.code === 'PGRST116') {
+      throw AppError.notFound('Permiso no encontrado.');
+    }
+    throw fromSupabaseError(error, 'No se pudo obtener el permiso solicitado.');
+  }
+
+  return data;
+};
 
 const fetchGrupoRow = async (idGrupo) => {
   const { data, error } = await supabase
@@ -253,7 +269,8 @@ const deleteGrupo = async (idGrupo) => {
 
 const addPermisoToGrupo = async (idGrupo, idPermiso) => {
   await fetchGrupoRow(idGrupo);
-  const permiso = await getPermisoById(idPermiso);
+  const permisoRow = await fetchPermisoRow(idPermiso);
+  const permiso = formatPermisoLite(permisoRow);
 
   const { data: existing, error: existingError } = await supabase
     .from('grupo_permisos')
