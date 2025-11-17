@@ -7,7 +7,7 @@ const app = express();
 
 // Configura CORS
 app.use(cors({
-  origin: process.env.CORS_ORIGIN || 'https://pastelcat.vercel.app',// 'http://localhost:3000', //
+  origin: process.env.CORS_ORIGIN || 'http://localhost:3000', //'https://pastelcat.vercel.app',// 
   methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
   allowedHeaders: ['Content-Type', 'Authorization'],
 }));
@@ -25,6 +25,8 @@ const bandejasRoutes = require('./routes/bandeja');
 const pedidosRoutes = require('./routes/pedido');
 const clientesRoutes = require('./routes/cliente');
 const productosRoutes = require('./routes/producto');
+const articulosRoutes = require('./routes/articulo');
+const categoriasRoutes = require('./routes/categoria');
 const dashboardRoutes = require('./routes/dashboard');
 const usuariosRoutes = require('./routes/usuario');
 const gruposRoutes = require('./routes/grupos');
@@ -38,6 +40,8 @@ app.use('/bandejas', bandejasRoutes);
 app.use('/pedidos', pedidosRoutes);
 app.use('/clientes', clientesRoutes);
 app.use('/productos', productosRoutes);
+app.use('/articulos', articulosRoutes);
+app.use('/categorias', categoriasRoutes);
 app.use('/dashboard', dashboardRoutes);
 app.use('/usuarios', usuariosRoutes);
 app.use('/grupos', gruposRoutes);
