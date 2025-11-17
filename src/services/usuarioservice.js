@@ -2,6 +2,7 @@ const crypto = require('crypto');
 const supabase = require('../config/supabase');
 const getSupabaseAdmin = require('../config/supabaseAdmin');
 const { AppError, fromSupabaseError } = require('../utils/errors');
+const { invalidatePermissionsCache } = require('../utils/permissionsCache');
 
 const DEFAULT_PAGE_SIZE = 10;
 const MAX_PAGE_SIZE = 50;
@@ -46,6 +47,37 @@ const ensureAdminClient = () => {
   } catch (err) {
     throw AppError.internal('No se pudo inicializar el cliente admin de Supabase. Verifica SUPABASE_SERVICE_ROLE_KEY.');
   }
+};
+
+const findAuthUserByEmail = async (email) => {
+  const normalizedEmail = sanitizeString(email).toLowerCase();
+  if (!normalizedEmail) {
+    return null;
+  }
+
+  const supabaseAdmin = ensureAdminClient();
+  const perPage = 200;
+  let page = 1;
+
+  while (true) {
+    const { data, error } = await supabaseAdmin.auth.admin.listUsers({ page, perPage });
+    if (error) {
+      throw AppError.internal('No se pudo buscar el usuario autenticable por email.');
+    }
+
+    const users = data?.users ?? [];
+    const match = users.find((user) => user.email?.toLowerCase() === normalizedEmail);
+    if (match) {
+      return match;
+    }
+
+    if (users.length < perPage) {
+      break;
+    }
+    page += 1;
+  }
+
+  return null;
 };
 
 const ensureDniUnique = async (dni, excludeId = null) => {
@@ -108,6 +140,22 @@ const formatPerfil = (perfil, emailMap) => ({
   created_at: perfil.created_at ?? null,
   update_at: perfil.update_at ?? perfil.update_at ?? null,
 });
+
+const ensureAuthUserAvailable = async (userId, currentPerfilId) => {
+  const { data, error } = await supabase
+    .from('perfil')
+    .select('id_perfil')
+    .eq('id', userId);
+
+  if (error) {
+    throw fromSupabaseError(error, 'No se pudo validar el usuario autenticable.');
+  }
+
+  const conflict = (data || []).find((perfil) => perfil.id_perfil !== currentPerfilId);
+  if (conflict) {
+    throw AppError.conflict('El email proporcionado ya esta asociado a otro usuario.');
+  }
+};
 
 const createResetToken = async (userId, tipo) => {
   const lifetimeHours = RESET_LIFETIME_HOURS[tipo] ?? 24;
@@ -454,6 +502,7 @@ const assignGrupoToUsuario = async (idPerfil, idGrupo) => {
     throw fromSupabaseError(error, 'No se pudo asignar el grupo al usuario.');
   }
 
+  invalidatePermissionsCache(perfil.id);
   return listGruposDeUsuario(idPerfil);
 };
 
@@ -475,6 +524,7 @@ const removeGrupoFromUsuario = async (idPerfil, idGrupo) => {
     throw fromSupabaseError(error, 'No se pudo quitar el grupo del usuario.');
   }
 
+  invalidatePermissionsCache(perfil.id);
   return listGruposDeUsuario(idPerfil);
 };
 
@@ -552,6 +602,7 @@ const assignPermisoDirectoAUsuario = async (idPerfil, idPermiso) => {
     throw fromSupabaseError(error, 'No se pudo asignar el permiso al usuario.');
   }
 
+  invalidatePermissionsCache(perfil.id);
   return listPermisosDirectosDeUsuario(idPerfil);
 };
 
@@ -573,7 +624,87 @@ const removePermisoDirectoDeUsuario = async (idPerfil, idPermiso) => {
     throw fromSupabaseError(error, 'No se pudo quitar el permiso del usuario.');
   }
 
+  invalidatePermissionsCache(perfil.id);
   return listPermisosDirectosDeUsuario(idPerfil);
+};
+
+const promoteClienteToAdministrador = async (idPerfil, { email, dni }) => {
+  const safeEmail = sanitizeString(email).toLowerCase();
+  const safeDni = sanitizeString(dni);
+
+  if (!safeEmail || !safeDni) {
+    throw AppError.badRequest('Email y DNI son obligatorios.');
+  }
+
+  const { data: perfil, error } = await supabase
+    .from('perfil')
+    .select('*')
+    .eq('id_perfil', idPerfil)
+    .single();
+
+  if (error) {
+    if (error.code === 'PGRST116') {
+      throw AppError.notFound('Usuario no encontrado.');
+    }
+    throw fromSupabaseError(error, 'No se pudo obtener el usuario solicitado.');
+  }
+
+  if (!perfil.dni) {
+    throw AppError.badRequest('El usuario no tiene un DNI registrado.');
+  }
+
+  if (sanitizeString(perfil.dni) !== safeDni) {
+    throw AppError.badRequest('El DNI proporcionado no coincide con el usuario.');
+  }
+
+  const supabaseAdmin = ensureAdminClient();
+  let authUser = null;
+
+  if (perfil.id) {
+    try {
+      const { data: existingUser } = await supabaseAdmin.auth.admin.getUserById(perfil.id);
+      if (existingUser?.user) {
+        authUser = existingUser.user;
+      }
+    } catch (err) {
+      // Si falla continuamos buscando por email
+    }
+  }
+
+  if (!authUser) {
+    authUser = await findAuthUserByEmail(safeEmail);
+  }
+
+  if (!authUser) {
+    const { data: createdUser, error: createError } = await supabaseAdmin.auth.admin.createUser({
+      email: safeEmail,
+      password: safeDni,
+      email_confirm: true,
+    });
+
+    if (createError || !createdUser?.user) {
+      throw AppError.conflict(createError?.message || 'No se pudo crear el usuario autenticable.');
+    }
+    authUser = createdUser.user;
+  }
+
+  await ensureAuthUserAvailable(authUser.id, idPerfil);
+
+  const { data: updatedPerfil, error: updateError } = await supabase
+    .from('perfil')
+    .update({ id: authUser.id })
+    .eq('id_perfil', idPerfil)
+    .select('*')
+    .single();
+
+  if (updateError) {
+    throw fromSupabaseError(updateError, 'No se pudo actualizar el perfil.');
+  }
+
+  await createResetToken(authUser.id, 'set_password');
+
+  const emailMap = new Map([[authUser.id, authUser.email?.toLowerCase() || safeEmail]]);
+  return formatPerfil(updatedPerfil, emailMap);
 };
 
 const softDeleteUsuario = async (idPerfil) => {
@@ -614,4 +745,5 @@ module.exports = {
   listPermisosDirectosDeUsuario,
   assignPermisoDirectoAUsuario,
   removePermisoDirectoDeUsuario,
+  promoteClienteToAdministrador,
 };

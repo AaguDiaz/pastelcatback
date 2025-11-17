@@ -1,6 +1,8 @@
 const express = require('express');
 const router = express.Router();
 const { authenticateToken } = require('../middleware/auth');
+const { requirePermissions } = require('../middleware/permissions');
+const PERMISSIONS = require('../utils/permissionSlugs');
 const {
   getTortas,
   createTorta,
@@ -12,7 +14,7 @@ const multer = require('multer');
 
 const upload = multer();
 
-router.get('/', authenticateToken, async (req, res) => {
+router.get('/', authenticateToken, requirePermissions(PERMISSIONS.TORTAS.VER), async (req, res) => {
   try {
     const { page = 1, search = '' } = req.query;
     const result = await getTortas(parseInt(page), search);
@@ -22,7 +24,7 @@ router.get('/', authenticateToken, async (req, res) => {
   }
 });
 
-router.post('/', authenticateToken, upload.single('imagen'), async (req, res) => {
+router.post('/', authenticateToken, requirePermissions(PERMISSIONS.TORTAS.AGREGAR), upload.single('imagen'), async (req, res) => {
   try {
     const { nombre, precio, tamanio } = req.body;
     if (!nombre || !precio || !tamanio) {
@@ -45,7 +47,7 @@ router.post('/', authenticateToken, upload.single('imagen'), async (req, res) =>
   }
 });
 
-router.put('/:id', authenticateToken, upload.single('imagen'), async (req, res) => {
+router.put('/:id', authenticateToken, requirePermissions(PERMISSIONS.TORTAS.MODIFICAR), upload.single('imagen'), async (req, res) => {
   try {
     const { id } = req.params;
     const { nombre, precio, tamanio, existingImage } = req.body;
@@ -73,7 +75,7 @@ router.put('/:id', authenticateToken, upload.single('imagen'), async (req, res) 
   }
 });
 
-router.delete('/:id', authenticateToken, async (req, res) => {
+router.delete('/:id', authenticateToken, requirePermissions(PERMISSIONS.TORTAS.ELIMINAR), async (req, res) => {
   try {
     const { id } = req.params;
     await deleteTorta(id);

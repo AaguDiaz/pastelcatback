@@ -1,6 +1,8 @@
 const express = require('express');
 const router = express.Router();
 const { authenticateToken } = require('../middleware/auth');
+const { requirePermissions } = require('../middleware/permissions');
+const PERMISSIONS = require('../utils/permissionSlugs');
 const { getClientes } = require('../services/clienteservice');
 
 const parseIsActive = (value) => {
@@ -11,7 +13,7 @@ const parseIsActive = (value) => {
   return null;
 };
 
-router.get('/', authenticateToken, async (req, res) => {
+router.get('/', authenticateToken, requirePermissions(PERMISSIONS.USUARIO.VER), async (req, res) => {
   try {
     const { page = 1, pageSize = 10, search = '' } = req.query;
     const rawIsActive = req.query.is_active ?? req.query.activo;
