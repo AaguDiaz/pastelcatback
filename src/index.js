@@ -23,6 +23,7 @@ const tortasRoutes = require('./routes/torta');
 const recetasRoutes = require('./routes/receta');
 const bandejasRoutes = require('./routes/bandeja');
 const pedidosRoutes = require('./routes/pedido');
+const eventosRoutes = require('./routes/evento');
 const clientesRoutes = require('./routes/cliente');
 const productosRoutes = require('./routes/producto');
 const articulosRoutes = require('./routes/articulo');
@@ -38,6 +39,7 @@ app.use('/tortas', tortasRoutes);
 app.use('/receta', recetasRoutes)
 app.use('/bandejas', bandejasRoutes);
 app.use('/pedidos', pedidosRoutes);
+app.use('/eventos', eventosRoutes);
 app.use('/clientes', clientesRoutes);
 app.use('/productos', productosRoutes);
 app.use('/articulos', articulosRoutes);
