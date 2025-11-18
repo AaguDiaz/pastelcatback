@@ -4,6 +4,235 @@ const { fromSupabaseError } = require('../utils/errors');
 const ITEMS_PER_PAGE = 10;
 const ESTADO_PENDIENTE = 'pendiente';
 
+const reloadSchemaCache = async () => {
+  try {
+    await supabase.rpc('reload_schema');
+  } catch (err) {
+    console.warn('No se pudo refrescar la cache de esquema de PostgREST', err?.message || err);
+  }
+};
+
+const toUniqueNumberIds = (values = []) => {
+  const ids = new Set();
+  values.forEach((value) => {
+    const num = Number(value);
+    if (Number.isFinite(num) && num > 0) {
+      ids.add(num);
+    }
+  });
+  return Array.from(ids);
+};
+
+const fetchMapByIds = async ({ table, idField, selectFields, ids, errorMessage }) => {
+  const uniqueIds = toUniqueNumberIds(ids);
+  if (!uniqueIds.length) return new Map();
+  const { data, error } = await supabase.from(table).select(selectFields).in(idField, uniqueIds);
+  if (error) {
+    throw fromSupabaseError(error, errorMessage);
+  }
+  const map = new Map();
+  (data || []).forEach((row) => {
+    const key = row?.[idField];
+    if (key !== undefined && key !== null) {
+      map.set(Number(key), row);
+    }
+  });
+  return map;
+};
+
+const fetchPerfilesMap = async (ids = []) => {
+  return fetchMapByIds({
+    table: 'perfil',
+    idField: 'id_perfil',
+    selectFields: 'id_perfil, nombre, telefono, direccion, dni, is_active, id',
+    ids,
+    errorMessage: 'Error al obtener perfiles',
+  });
+};
+
+const fetchEstadosMap = async (ids = []) => {
+  const baseMap = await fetchMapByIds({
+    table: 'estado',
+    idField: 'id_estado',
+    selectFields: 'id_estado, estado',
+    ids,
+    errorMessage: 'Error al obtener estados',
+  });
+  const map = new Map();
+  baseMap.forEach((row, key) => {
+    map.set(key, row.estado);
+  });
+  return map;
+};
+
+const buildPerfilPayload = (row) => {
+  if (!row) return null;
+  return {
+    id_perfil: row.id_perfil,
+    nombre: row.nombre ?? null,
+    telefono: row.telefono ?? null,
+    direccion: row.direccion ?? null,
+    dni: row.dni ?? null,
+    is_active: typeof row.is_active === 'boolean' ? row.is_active : null,
+    id: row.id ?? null,
+  };
+};
+
+const attachPerfilAndEstado = async (evento) => {
+  if (!evento) return null;
+  const [perfilMap, estadoMap] = await Promise.all([
+    fetchPerfilesMap(evento.id_perfil ? [evento.id_perfil] : []),
+    fetchEstadosMap(evento.id_estado ? [evento.id_estado] : []),
+  ]);
+  const perfilRow = perfilMap.get(Number(evento.id_perfil));
+  const estadoNombre = estadoMap.get(Number(evento.id_estado));
+  return {
+    ...evento,
+    perfil: buildPerfilPayload(perfilRow),
+    estado: estadoNombre ? { estado: estadoNombre } : null,
+  };
+};
+
+const fetchTortasMap = async (ids = []) => {
+  const map = await fetchMapByIds({
+    table: 'torta',
+    idField: 'id_torta',
+    selectFields: 'id_torta, nombre, precio, imagen, tamanio',
+    ids,
+    errorMessage: 'Error al obtener tortas',
+  });
+  const formatted = new Map();
+  map.forEach((row, key) => {
+    formatted.set(key, {
+      id: row.id_torta,
+      id_torta: row.id_torta,
+      nombre: row.nombre ?? null,
+      precio: row.precio ?? null,
+      imagen: row.imagen ?? null,
+      tamanio: row.tamanio ?? null,
+    });
+  });
+  return formatted;
+};
+
+const fetchBandejasMap = async (ids = []) => {
+  const map = await fetchMapByIds({
+    table: 'bandeja',
+    idField: 'id_bandeja',
+    selectFields: 'id_bandeja, nombre, precio, imagen, tamanio',
+    ids,
+    errorMessage: 'Error al obtener bandejas',
+  });
+  const formatted = new Map();
+  map.forEach((row, key) => {
+    formatted.set(key, {
+      id: row.id_bandeja,
+      id_bandeja: row.id_bandeja,
+      nombre: row.nombre ?? null,
+      precio: row.precio ?? null,
+      imagen: row.imagen ?? null,
+      tamanio: row.tamanio ?? null,
+    });
+  });
+  return formatted;
+};
+
+const fetchArticulosMap = async (ids = []) => {
+  const map = await fetchMapByIds({
+    table: 'Articulo',
+    idField: 'id_articulo',
+    selectFields:
+      'id_articulo, nombre, precio_alquiler, costo_unitario, color, tamanio, stock_total, stock_disponible, id_categoria',
+    ids,
+    errorMessage: 'Error al obtener artículos',
+  });
+  const categoriaIds = Array.from(map.values())
+    .map((row) => row.id_categoria)
+    .filter((value) => Number.isFinite(Number(value)));
+  const categoriaMap = await fetchMapByIds({
+    table: 'categoria',
+    idField: 'id_categoria',
+    selectFields: 'id_categoria, nombre',
+    ids: categoriaIds,
+    errorMessage: 'Error al obtener categorías',
+  });
+  const formatted = new Map();
+  map.forEach((row, key) => {
+    const categoriaRow = row.id_categoria ? categoriaMap.get(Number(row.id_categoria)) : null;
+    formatted.set(key, {
+      id: row.id_articulo,
+      id_articulo: row.id_articulo,
+      nombre: row.nombre ?? null,
+      precio_alquiler: row.precio_alquiler ?? null,
+      costo_unitario: row.costo_unitario ?? null,
+      color: row.color ?? null,
+      tamanio: row.tamanio ?? null,
+      stock_total: row.stock_total ?? null,
+      stock_disponible: row.stock_disponible ?? null,
+      id_categoria: row.id_categoria ?? null,
+      categoria_nombre: categoriaRow?.nombre ?? null,
+    });
+  });
+  return formatted;
+};
+
+const getArticuloCantidadesByEvento = async (eventoId) => {
+  const { data, error } = await supabase
+    .from('lista_evento')
+    .select('id_articulo, cantidad')
+    .eq('id_evento', eventoId)
+    .not('id_articulo', 'is', null);
+  if (error) {
+    throw fromSupabaseError(error, 'No se pudieron obtener los artículos del evento.');
+  }
+  const map = new Map();
+  (data || []).forEach((row) => {
+    const id = Number(row?.id_articulo);
+    const cantidad = Number(row?.cantidad) || 0;
+    if (!id || cantidad <= 0) return;
+    map.set(id, (map.get(id) || 0) + cantidad);
+  });
+  return map;
+};
+
+const adjustArticuloStockForEvento = async (eventoId, direction) => {
+  if (!direction) return;
+  const cantidadesMap = await getArticuloCantidadesByEvento(eventoId);
+  if (!cantidadesMap.size) return;
+
+  const articulosMap = await fetchArticulosMap(Array.from(cantidadesMap.keys()));
+  const updates = [];
+
+  cantidadesMap.forEach((cantidad, idArticulo) => {
+    const articulo = articulosMap.get(idArticulo);
+    if (!articulo) {
+      throw new Error(`Artículo ${idArticulo} no encontrado`);
+    }
+    const disponible = Number(articulo.stock_disponible ?? 0);
+    const total = Number(articulo.stock_total ?? NaN);
+    const delta = direction * cantidad;
+    const nuevoDisponible = disponible + delta;
+    if (direction < 0 && nuevoDisponible < 0) {
+      throw new Error(
+        `No hay stock suficiente para el artículo ${articulo.nombre ?? idArticulo}`,
+      );
+    }
+    const finalDisponible =
+      direction > 0 && Number.isFinite(total) ? Math.min(nuevoDisponible, total) : nuevoDisponible;
+    updates.push({ id_articulo: articulo.id_articulo, stock_disponible: finalDisponible });
+  });
+
+  for (const upd of updates) {
+    const { error } = await supabase
+      .from('Articulo')
+      .update({ stock_disponible: upd.stock_disponible })
+      .eq('id_articulo', upd.id_articulo);
+    if (error) {
+      throw fromSupabaseError(error, 'No se pudo actualizar el stock de artículos.');
+    }
+  }
+};
+
 const fetchEstadoId = async (nombre) => {
   const { data, error } = await supabase
     .from('estado')
@@ -16,32 +245,13 @@ const fetchEstadoId = async (nombre) => {
   return data.id_estado;
 };
 
-const mapEventoListRow = (row) => ({
-  id: row.id_evento,
-  nombre: row?.perfil?.nombre ?? null,
-  fecha_entrega: row.fecha_entrega,
-  total_final: row.total_final,
-  observaciones: row.observaciones,
-  estado: row?.estado?.estado ?? null,
-});
-
 const getEventos = async (page = 1, estado = null) => {
   const start = (page - 1) * ITEMS_PER_PAGE;
   const end = start + ITEMS_PER_PAGE - 1;
 
   let query = supabase
     .from('evento')
-    .select(
-      `
-      id_evento,
-      fecha_entrega,
-      total_final,
-      observaciones,
-      perfil:perfil ( nombre ),
-      estado:estado ( estado )
-      `,
-      { count: 'exact' }
-    )
+    .select('*', { count: 'exact' })
     .range(start, end)
     .order('fecha_creacion', { ascending: false });
 
@@ -51,65 +261,90 @@ const getEventos = async (page = 1, estado = null) => {
   }
 
   const { data, error, count } = await query;
-  if (error) throw new Error('Error al obtener eventos');
+  if (error) throw fromSupabaseError(error, 'Error al obtener eventos');
+
+  const eventos = data || [];
+  const perfilIds = eventos.map((row) => row.id_perfil);
+  const estadoIds = eventos.map((row) => row.id_estado);
+  const [perfilMap, estadoMap] = await Promise.all([
+    fetchPerfilesMap(perfilIds),
+    fetchEstadosMap(estadoIds),
+  ]);
 
   return {
-    data: (data || []).map(mapEventoListRow),
+    data: eventos.map((row) => {
+      const perfilRow = perfilMap.get(Number(row.id_perfil));
+      const estadoNombre = estadoMap.get(Number(row.id_estado));
+      return {
+        id: row.id_evento,
+        nombre: perfilRow?.nombre ?? null,
+        fecha_entrega: row.fecha_entrega,
+        total_final: row.total_final,
+        observaciones: row.observaciones,
+        estado: estadoNombre ?? null,
+      };
+    }),
     totalPages: Math.ceil((count || 0) / ITEMS_PER_PAGE),
     currentPage: page,
   };
 };
 
 const getEventoById = async (id) => {
-  const { data, error } = await supabase
-    .from('evento')
-    .select(
-      `
-      id_evento,
-      fecha_entrega,
-      total_final,
-      observaciones,
-      perfil:perfil ( nombre ),
-      estado:estado ( estado )
-      `
-    )
-    .eq('id_evento', id)
-    .single();
+  const { data, error } = await supabase.from('evento').select('*').eq('id_evento', id).single();
 
   if (error || !data) throw new Error('Evento no encontrado');
 
+  const enriched = await attachPerfilAndEstado(data);
+
   return {
-    id: data.id_evento,
-    nombre: data?.perfil?.nombre ?? null,
-    fecha_entrega: data.fecha_entrega,
-    total_final: data.total_final,
-    observaciones: data.observaciones,
-    estado: data?.estado?.estado ?? null,
+    id: enriched.id_evento,
+    nombre: enriched?.perfil?.nombre ?? null,
+    fecha_entrega: enriched.fecha_entrega,
+    total_final: enriched.total_final,
+    observaciones: enriched.observaciones,
+    estado: enriched?.estado?.estado ?? null,
+    perfil: enriched.perfil,
   };
 };
 
 const getEventoByIdFull = async (id) => {
-  const { data, error } = await supabase
-    .from('evento')
-    .select(
-      `
-      *,
-      estado:estado ( estado ),
-      perfil:perfil ( nombre ),
-      lista_evento (
-        *,
-        torta:torta ( * ),
-        bandeja:bandeja ( * ),
-        articulo:articulo ( * )
-      )
-      `
-    )
-    .eq('id_evento', id)
-    .single();
+  const { data, error } = await supabase.from('evento').select('*').eq('id_evento', id).single();
 
   if (error || !data) throw new Error('Evento no encontrado');
 
-  return data;
+  const baseEvento = await attachPerfilAndEstado(data);
+
+  const { data: detalles, error: detallesErr } = await supabase
+    .from('lista_evento')
+    .select('*')
+    .eq('id_evento', id);
+
+  if (detallesErr) {
+    throw fromSupabaseError(detallesErr, 'Error al obtener la lista del evento');
+  }
+
+  const lista = detalles || [];
+  const tortaIds = lista.map((det) => det.id_torta);
+  const bandejaIds = lista.map((det) => det.id_bandeja);
+  const articuloIds = lista.map((det) => det.id_articulo);
+
+  const [tortaMap, bandejaMap, articuloMap] = await Promise.all([
+    fetchTortasMap(tortaIds),
+    fetchBandejasMap(bandejaIds),
+    fetchArticulosMap(articuloIds),
+  ]);
+
+  const listaEvento = lista.map((detalle) => ({
+    ...detalle,
+    torta: detalle.id_torta ? tortaMap.get(Number(detalle.id_torta)) || null : null,
+    bandeja: detalle.id_bandeja ? bandejaMap.get(Number(detalle.id_bandeja)) || null : null,
+    articulo: detalle.id_articulo ? articuloMap.get(Number(detalle.id_articulo)) || null : null,
+  }));
+
+  return {
+    ...baseEvento,
+    lista_evento: listaEvento,
+  };
 };
 
 const calcularDetalles = async ({ tortas = [], bandejas = [], articulos = [] }) => {
@@ -163,14 +398,18 @@ const calcularDetalles = async ({ tortas = [], bandejas = [], articulos = [] }) 
 
   for (const item of articulos) {
     const { data, error } = await supabase
-      .from('articulo')
-      .select('id_articulo, precio_alquiler')
+      .from('Articulo')
+      .select('id_articulo, precio_alquiler, stock_disponible')
       .eq('id_articulo', item.id_articulo)
       .single();
     if (error || !data) throw new Error('Artículo no encontrado');
 
     const cantidad = Number(item.cantidad) || 0;
     const precio = Number(data.precio_alquiler) || 0;
+    const stockDisponible = Number(data.stock_disponible ?? 0);
+    if (cantidad > stockDisponible) {
+      throw new Error(`Stock insuficiente para el artículo ${data.id_articulo}`);
+    }
     const subtotal = precio * cantidad;
 
     total += subtotal;
@@ -204,32 +443,43 @@ const createEvento = async ({
 
   const { total, totalItems, detalles } = await calcularDetalles({ tortas, bandejas, articulos });
 
-  const { data: eventoData, error: eventoError } = await supabase
-    .from('evento')
-    .insert({
-      id_perfil,
-      fecha_creacion: new Date().toISOString(),
-      fecha_entrega,
-      id_estado: idEstadoPendiente,
-      tipo_entrega,
-      total_items: totalItems,
-      total_descuento: 0,
-      total_final: total,
-      observaciones,
-      direccion_entrega,
-    })
-    .select()
-    .single();
+  const performInsert = () =>
+    supabase
+      .from('evento')
+      .insert({
+        id_perfil,
+        fecha_creacion: new Date().toISOString(),
+        fecha_entrega,
+        id_estado: idEstadoPendiente,
+        tipo_entrega,
+        total_items: totalItems,
+        total_descuento: 0,
+        total_final: total,
+        observaciones,
+        direccion_entrega,
+      })
+      .select()
+      .single();
 
-  if (eventoError || !eventoData) {
-    throw new Error('Error al crear evento');
+  let { data: eventoData, error: eventoError } = await performInsert();
+
+  if (eventoError?.code === 'PGRST204') {
+    await reloadSchemaCache();
+    ({ data: eventoData, error: eventoError } = await performInsert());
+  }
+
+  if (eventoError) {
+    throw fromSupabaseError(eventoError, 'No se pudo crear el evento.');
+  }
+  if (!eventoData) {
+    throw new Error('No se recibió información del evento recién creado.');
   }
 
   if (detalles.length > 0) {
     const detallesConEvento = detalles.map((det) => ({ ...det, id_evento: eventoData.id_evento }));
     const { error: detError } = await supabase.from('lista_evento').insert(detallesConEvento);
     if (detError) {
-      throw new Error('Error al crear la lista del evento');
+      throw fromSupabaseError(detError, 'No se pudo crear la lista del evento.');
     }
   }
 
@@ -285,8 +535,11 @@ const updateEvento = async (id, datos) => {
     .select()
     .single();
 
-  if (updateError || !eventoActualizado) {
-    throw new Error('Error al actualizar evento');
+  if (updateError) {
+    throw fromSupabaseError(updateError, 'No se pudo actualizar el evento.');
+  }
+  if (!eventoActualizado) {
+    throw new Error('No se recibió información actualizada del evento.');
   }
 
   if (detalles.length > 0) {
@@ -294,7 +547,7 @@ const updateEvento = async (id, datos) => {
       .from('lista_evento')
       .insert(detalles.map((det) => ({ ...det, id_evento: id })));
     if (detError) {
-      throw new Error('Error al actualizar la lista del evento');
+      throw fromSupabaseError(detError, 'No se pudo actualizar la lista del evento.');
     }
   }
 
@@ -319,6 +572,19 @@ const updateEstadoEvento = async (id, idEstadoNuevo) => {
   }
   if (!transiciones[idEstadoActual]?.includes(idEstadoNuevo)) {
     throw new Error('Transición de estado no permitida');
+  }
+
+  const idConfirmado = mapLabelToId.confirmado;
+  const idCerrado = mapLabelToId.cerrado;
+  const idCancelado = mapLabelToId.cancelado;
+  const shouldSubtract = idEstadoActual === mapLabelToId.pendiente && idEstadoNuevo === idConfirmado;
+  const shouldReturn =
+    idEstadoActual === idConfirmado && (idEstadoNuevo === idCerrado || idEstadoNuevo === idCancelado);
+
+  if (shouldSubtract) {
+    await adjustArticuloStockForEvento(id, -1);
+  } else if (shouldReturn) {
+    await adjustArticuloStockForEvento(id, 1);
   }
 
   const { data, error } = await supabase

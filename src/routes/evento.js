@@ -12,6 +12,7 @@ const {
   updateEstadoEvento,
   deleteEvento,
 } = require('../services/eventoservice');
+const { sendError } = require('../utils/errors');
 
 router.get('/', authenticateToken, requirePermissions(PERMISSIONS.EVENTOS.VER), async (req, res) => {
   try {
@@ -46,7 +47,7 @@ router.post('/', authenticateToken, requirePermissions(PERMISSIONS.EVENTOS.AGREG
     const evento = await createEvento(req.body);
     res.status(201).json(evento);
   } catch (err) {
-    res.status(400).json({ error: err.message });
+    sendError(res, err);
   }
 });
 
@@ -55,7 +56,7 @@ router.put('/:id', authenticateToken, requirePermissions(PERMISSIONS.EVENTOS.MOD
     const evento = await updateEvento(req.params.id, req.body);
     res.json(evento);
   } catch (err) {
-    res.status(400).json({ error: err.message });
+    sendError(res, err);
   }
 });
 
@@ -71,7 +72,7 @@ router.put('/:id/estado', authenticateToken, requirePermissions(PERMISSIONS.EVEN
     const evento = await updateEstadoEvento(id, id_estado);
     return res.json(evento);
   } catch (err) {
-    return res.status(400).json({ error: err.message });
+    return sendError(res, err);
   }
 });
 
@@ -80,7 +81,7 @@ router.delete('/:id', authenticateToken, requirePermissions(PERMISSIONS.EVENTOS.
     const evento = await deleteEvento(req.params.id);
     res.json(evento);
   } catch (err) {
-    res.status(400).json({ error: err.message });
+    sendError(res, err);
   }
 });
 
