@@ -14,6 +14,21 @@ const ensureAdminClient = () => {
   }
 };
 
+const logoutUser = async (accessToken) => {
+  const token = typeof accessToken === 'string' ? accessToken.trim() : '';
+  if (!token) {
+    throw AppError.badRequest('Token de sesión requerido para cerrar sesión.');
+  }
+
+  const supabaseAdmin = ensureAdminClient();
+  const { error } = await supabaseAdmin.auth.admin.signOut(token, 'global');
+  if (error) {
+    throw AppError.internal(error.message || 'No se pudo cerrar sesión.');
+  }
+
+  return { message: 'Sesión cerrada correctamente.' };
+};
+
 const hasPendingSetPassword = async (userId) => {
   const { data, error } = await supabase
     .from('reset_clave')
@@ -149,4 +164,5 @@ module.exports = {
   login,
   changePasswordAfterFirstLogin,
   requestPasswordReset,
+  logoutUser,
 };
