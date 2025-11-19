@@ -5,6 +5,7 @@ const {
   login,
   changePasswordAfterFirstLogin,
   requestPasswordReset,
+  logoutUser,
 } = require('../services/authservice');
 
 router.post('/login', async (req, res, next) => {
@@ -32,6 +33,17 @@ router.post('/forgot-password', async (req, res, next) => {
   try {
     const { email } = req.body;
     const result = await requestPasswordReset(email);
+    res.json(result);
+  } catch (err) {
+    next(err);
+  }
+});
+
+router.post('/logout', authenticateToken, async (req, res, next) => {
+  try {
+    const authHeader = req.headers['authorization'] || '';
+    const token = authHeader.split(' ')[1];
+    const result = await logoutUser(token);
     res.json(result);
   } catch (err) {
     next(err);

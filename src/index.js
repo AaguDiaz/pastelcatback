@@ -32,6 +32,7 @@ const dashboardRoutes = require('./routes/dashboard');
 const usuariosRoutes = require('./routes/usuario');
 const gruposRoutes = require('./routes/grupos');
 const permisosRoutes = require('./routes/permisos');
+const auditoriaRoutes = require('./routes/auditoria');
 
 app.use('/auth', authRoutes);
 app.use('/materias-primas', materiasPrimasRoutes);
@@ -48,6 +49,7 @@ app.use('/dashboard', dashboardRoutes);
 app.use('/usuarios', usuariosRoutes);
 app.use('/grupos', gruposRoutes);
 app.use('/permisos', permisosRoutes);
+app.use('/auditoria', auditoriaRoutes);
 
 // Ruta de prueba
 app.get('/', (req, res) => {
