@@ -4,6 +4,13 @@ const { fromSupabaseError} = require('../utils/errors');
 const ITEMS_PER_PAGE = 10;
 const ESTADO_PENDIENTE = 'pendiente';
 
+const sanitizeDescuento = (valor, totalReferencia = 0) => {
+  const numero = Number(valor);
+  if (!Number.isFinite(numero) || numero <= 0) return 0;
+  const maxReferencia = Math.max(Number(totalReferencia) || 0, 0);
+  return Math.min(numero, maxReferencia);
+};
+
 const fetchEstadoId = async (nombre) => {
   const { data, error } = await supabase
     .from('estado')
@@ -119,6 +126,8 @@ const createPedido = async ({
   bandejas = [],
   observaciones = null,
   direccion_entrega = null,
+  total_descuento: totalDescuentoInput = null,
+  descuento: descuentoInput = null,
 }) => {
   if (!id_perfil || !fecha_entrega || !tipo_entrega) {
     throw new Error('Faltan datos del pedido');
@@ -176,6 +185,12 @@ const createPedido = async ({
     });
   }
 
+  const descuentoAplicado = sanitizeDescuento(
+    totalDescuentoInput ?? descuentoInput ?? 0,
+    total,
+  );
+  const totalFinal = Math.max(total - descuentoAplicado, 0);
+
   // insertar pedido
   const { data: pedidoData, error: pedidoError } = await supabase
     .from('pedido')
@@ -186,8 +201,8 @@ const createPedido = async ({
       id_estado: idEstadoPendiente,
       tipo_entrega, 
       total_items: totalItems,
-      total_descuento: 0, 
-      total_final: total,
+      total_descuento: descuentoAplicado, 
+      total_final: totalFinal,
       observaciones,
       direccion_entrega,
     })
@@ -227,6 +242,8 @@ const updatePedido = async (id, datos) => {
     bandejas = [],
     observaciones = null,
     direccion_entrega = null,
+    total_descuento: totalDescuentoInput = null,
+    descuento: descuentoInput = null,
   } = datos;
 
   if (!id_perfil || !fecha_entrega || !tipo_entrega) {
@@ -291,6 +308,12 @@ const updatePedido = async (id, datos) => {
     });
   }
 
+  const descuentoAplicado = sanitizeDescuento(
+    totalDescuentoInput ?? descuentoInput ?? 0,
+    total,
+  );
+  const totalFinal = Math.max(total - descuentoAplicado, 0);
+
   const { data: pedidoActualizado, error: updateError } = await supabase
     .from('pedido')
     .update({
@@ -298,8 +321,8 @@ const updatePedido = async (id, datos) => {
       fecha_entrega,
       tipo_entrega,
       total_items: totalItems,
-      total_descuento: 0,
-      total_final: total,
+      total_descuento: descuentoAplicado,
+      total_final: totalFinal,
       observaciones,
       direccion_entrega,
       update_at: new Date().toISOString(),

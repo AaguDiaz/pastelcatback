@@ -5,7 +5,6 @@ const {
   login,
   changePasswordAfterFirstLogin,
   requestPasswordReset,
-  resetPasswordWithToken,
 } = require('../services/authservice');
 
 router.post('/login', async (req, res, next) => {
@@ -33,16 +32,6 @@ router.post('/forgot-password', async (req, res, next) => {
   try {
     const { email } = req.body;
     const result = await requestPasswordReset(email);
-    res.json(result);
-  } catch (err) {
-    next(err);
-  }
-});
-
-router.post('/reset-password', async (req, res, next) => {
-  try {
-    const { token, newPassword } = req.body;
-    const result = await resetPasswordWithToken(token, newPassword);
     res.json(result);
   } catch (err) {
     next(err);
