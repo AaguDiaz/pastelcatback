@@ -1,11 +1,8 @@
-const crypto = require('crypto');
 const supabase = require('../config/supabase');
 const getSupabaseAdmin = require('../config/supabaseAdmin');
 const { AppError, fromSupabaseError } = require('../utils/errors');
-const { sendMail } = require('../utils/mailer');
 
 const MIN_PASSWORD_LENGTH = 8;
-const RESET_TOKEN_TTL_MINUTES = 15;
 
 const sanitizeString = (value) => (typeof value === 'string' ? value.trim() : '');
 
@@ -52,148 +49,6 @@ const updateUserPassword = async (userId, newPassword) => {
   if (error) {
     throw AppError.internal(error.message || 'No se pudo actualizar la contraseña.');
   }
-};
-
-const createResetToken = async (userId, tipo, ttlMinutes) => {
-  const token = crypto.randomBytes(32).toString('hex');
-  const expiresAt = new Date(Date.now() + ttlMinutes * 60 * 1000).toISOString();
-
-  const { data, error } = await supabase
-    .from('reset_clave')
-    .insert({
-      id_usuario: userId,
-      token,
-      tipo,
-      expires_at: expiresAt,
-      used: false,
-    })
-    .select('id_reset, token, expires_at')
-    .single();
-
-  if (error) {
-    throw fromSupabaseError(error, 'No se pudo generar el token de restablecimiento.');
-  }
-
-  return data;
-};
-
-const findAuthUserByEmail = async (email) => {
-  const normalizedEmail = sanitizeString(email).toLowerCase();
-  if (!normalizedEmail) {
-    return null;
-  }
-
-  const supabaseAdmin = ensureAdminClient();
-  const perPage = 200;
-  let page = 1;
-
-  while (true) {
-    const { data, error } = await supabaseAdmin.auth.admin.listUsers({ page, perPage });
-    if (error) {
-      throw AppError.internal('No se pudo buscar el usuario autenticable por email.');
-    }
-
-    const users = data?.users ?? [];
-    const match = users.find((user) => user.email?.toLowerCase() === normalizedEmail);
-    if (match) {
-      return match;
-    }
-
-    if (users.length < perPage) {
-      break;
-    }
-    page += 1;
-  }
-
-  return null;
-};
-
-const buildResetLink = (token) => {
-  const baseUrl = sanitizeString(process.env.PASSWORD_RESET_URL || '');
-  if (!baseUrl) {
-    return null;
-  }
-  const separator = baseUrl.includes('?') ? '&' : '?';
-  return `${baseUrl}${separator}token=${token}`;
-};
-
-const buildResetEmail = (token) => {
-  const resetLink = buildResetLink(token);
-  const expiresText = `${RESET_TOKEN_TTL_MINUTES} minutos`;
-
-  const htmlParts = [
-    '<p>Recibimos un pedido para restablecer tu contraseña de PastelCat.</p>',
-  ];
-
-  if (resetLink) {
-    htmlParts.push(
-      `<p><a href="${resetLink}" style="display:inline-block;padding:12px 20px;background:#7c3aed;color:#fff;border-radius:6px;text-decoration:none;">Restablecer contraseña</a></p>`,
-    );
-  }
-
-  htmlParts.push(
-    `<p>Si el enlace no funciona, podés usar este token: <strong>${token}</strong>.</p>`,
-    `<p>Este enlace vence en ${expiresText}. Si no hiciste la solicitud, ignorá este mensaje.</p>`,
-  );
-
-  const text = resetLink
-    ? `Restablecé tu contraseña ingresando a: ${resetLink} (token: ${token}). El enlace vence en ${expiresText}.`
-    : `Token para restablecer tu contraseña: ${token}. Vence en ${expiresText}.`;
-
-  return { html: htmlParts.join(''), text };
-};
-
-const sendResetPasswordEmail = async (email, token) => {
-  const { html, text } = buildResetEmail(token);
-  await sendMail({
-    to: email,
-    subject: 'Restablecé tu contraseña',
-    html,
-    text,
-  });
-};
-
-const markTokenAsUsed = async (idReset) => {
-  const { error } = await supabase
-    .from('reset_clave')
-    .update({ used: true })
-    .eq('id_reset', idReset);
-
-  if (error) {
-    throw fromSupabaseError(error, 'No se pudo invalidar el token utilizado.');
-  }
-};
-
-const fetchActiveResetToken = async (token) => {
-  const safeToken = sanitizeString(token);
-  if (!safeToken) {
-    throw AppError.badRequest('El token es obligatorio.');
-  }
-
-  const { data, error } = await supabase
-    .from('reset_clave')
-    .select('id_reset, id_usuario, expires_at, tipo')
-    .eq('token', safeToken)
-    .eq('used', false)
-    .maybeSingle();
-
-  if (error) {
-    throw fromSupabaseError(error, 'No se pudo validar el token.');
-  }
-
-  if (!data) {
-    throw AppError.badRequest('El token no es válido o ya fue utilizado.');
-  }
-
-  if (data.tipo !== 'reset') {
-    throw AppError.badRequest('El token proporcionado no es válido para restablecer la contraseña.');
-  }
-
-  if (!data.expires_at || new Date(data.expires_at).getTime() <= Date.now()) {
-    throw AppError.badRequest('El token ya venció.');
-  }
-
-  return data;
 };
 
 const validateNewPassword = (password) => {
@@ -272,36 +127,26 @@ const requestPasswordReset = async (email) => {
     throw AppError.badRequest('El email es obligatorio.');
   }
 
-  const user = await findAuthUserByEmail(safeEmail);
-
-  if (!user) {
-    return {
-      message: 'Si el email existe en el sistema, recibirás un mensaje con instrucciones.',
-    };
+  const redirectTo = sanitizeString(process.env.PASSWORD_RESET_URL || '');
+  if (!redirectTo) {
+    throw AppError.internal('Falta configurar PASSWORD_RESET_URL.');
   }
 
-  await markTokensUsedByType(user.id, 'reset');
-  const { token } = await createResetToken(user.id, 'reset', RESET_TOKEN_TTL_MINUTES);
-  await sendResetPasswordEmail(user.email || safeEmail, token);
+  const { error } = await supabase.auth.resetPasswordForEmail(safeEmail, {
+    redirectTo,
+  });
+
+  if (error) {
+    throw AppError.badRequest(error.message || 'No se pudo iniciar el restablecimiento.');
+  }
 
   return {
     message: 'Si el email existe en el sistema, recibirás un mensaje con instrucciones.',
   };
 };
 
-const resetPasswordWithToken = async (token, newPassword) => {
-  const validatedPassword = validateNewPassword(newPassword);
-  const record = await fetchActiveResetToken(token);
-
-  await updateUserPassword(record.id_usuario, validatedPassword);
-  await markTokenAsUsed(record.id_reset);
-
-  return { message: 'Contraseña actualizada correctamente.' };
-};
-
 module.exports = {
   login,
   changePasswordAfterFirstLogin,
   requestPasswordReset,
-  resetPasswordWithToken,
 };

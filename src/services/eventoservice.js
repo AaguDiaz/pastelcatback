@@ -4,6 +4,13 @@ const { fromSupabaseError } = require('../utils/errors');
 const ITEMS_PER_PAGE = 10;
 const ESTADO_PENDIENTE = 'pendiente';
 
+const sanitizeDescuento = (valor, totalReferencia = 0) => {
+  const numero = Number(valor);
+  if (!Number.isFinite(numero) || numero <= 0) return 0;
+  const maxReferencia = Math.max(Number(totalReferencia) || 0, 0);
+  return Math.min(numero, maxReferencia);
+};
+
 const reloadSchemaCache = async () => {
   try {
     await supabase.rpc('reload_schema');
@@ -434,6 +441,8 @@ const createEvento = async ({
   articulos = [],
   observaciones = null,
   direccion_entrega = null,
+  total_descuento: totalDescuentoInput = null,
+  descuento: descuentoInput = null,
 }) => {
   if (!id_perfil || !fecha_entrega || !tipo_entrega) {
     throw new Error('Faltan datos del evento');
@@ -442,6 +451,11 @@ const createEvento = async ({
   const idEstadoPendiente = await fetchEstadoId(ESTADO_PENDIENTE);
 
   const { total, totalItems, detalles } = await calcularDetalles({ tortas, bandejas, articulos });
+  const descuentoAplicado = sanitizeDescuento(
+    totalDescuentoInput ?? descuentoInput ?? 0,
+    total,
+  );
+  const totalFinal = Math.max(total - descuentoAplicado, 0);
 
   const performInsert = () =>
     supabase
@@ -453,8 +467,8 @@ const createEvento = async ({
         id_estado: idEstadoPendiente,
         tipo_entrega,
         total_items: totalItems,
-        total_descuento: 0,
-        total_final: total,
+        total_descuento: descuentoAplicado,
+        total_final: totalFinal,
         observaciones,
         direccion_entrega,
       })
@@ -501,6 +515,8 @@ const updateEvento = async (id, datos) => {
     articulos = [],
     observaciones = null,
     direccion_entrega = null,
+    total_descuento: totalDescuentoInput = null,
+    descuento: descuentoInput = null,
   } = datos || {};
 
   if (!id_perfil || !fecha_entrega || !tipo_entrega) {
@@ -517,6 +533,11 @@ const updateEvento = async (id, datos) => {
   }
 
   const { total, totalItems, detalles } = await calcularDetalles({ tortas, bandejas, articulos });
+  const descuentoAplicado = sanitizeDescuento(
+    totalDescuentoInput ?? descuentoInput ?? 0,
+    total,
+  );
+  const totalFinal = Math.max(total - descuentoAplicado, 0);
 
   const { data: eventoActualizado, error: updateError } = await supabase
     .from('evento')
@@ -525,8 +546,8 @@ const updateEvento = async (id, datos) => {
       fecha_entrega,
       tipo_entrega,
       total_items: totalItems,
-      total_descuento: 0,
-      total_final: total,
+      total_descuento: descuentoAplicado,
+      total_final: totalFinal,
       observaciones,
       direccion_entrega,
       update_at: new Date().toISOString(),

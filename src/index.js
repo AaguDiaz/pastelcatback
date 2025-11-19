@@ -7,7 +7,7 @@ const app = express();
 
 // Configura CORS
 app.use(cors({
-  origin: process.env.CORS_ORIGIN || 'https://pastelcat.vercel.app',// 'http://localhost:3000', //
+  origin: process.env.CORS_ORIGIN || 'http://localhost:3000', //'https://pastelcat.vercel.app',// 
   methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
   allowedHeaders: ['Content-Type', 'Authorization'],
 }));
