@@ -133,7 +133,7 @@ const findLatestBeforeOrOn = (history, limitDate) => {
       return history[i];
     }
   }
-  return history.length > 0 ? history[history.length - 1] : null;
+  return null;
 };
 
 const findBaseline = (history, startDate) => {
