@@ -1,12 +1,21 @@
 const supabase = require('../config/supabase');
 const { AppError } = require('../utils/errors');
 
+const PERFIL_FIELDS = 'id_perfil, nombre, telefono, direccion, dni, is_active, id';
 const DEFAULT_RANGE_DAYS = 30;
 const MS_IN_DAY = 24 * 60 * 60 * 1000;
 
 const round = (value, decimals = 2) => {
   const factor = 10 ** decimals;
   return Math.round((Number(value) || 0) * factor) / factor;
+};
+
+const calcVariation = (current, previous) => {
+  if (!Number.isFinite(previous) || previous === 0) {
+    return null;
+  }
+  const delta = ((current - previous) / previous) * 100;
+  return round(delta);
 };
 
 const toNumber = (value) => {
@@ -93,6 +102,22 @@ const normalizeDateRange = (start, end) => {
   };
 };
 
+const buildPreviousRange = (range) => {
+  const days = Math.max(1, range.diffDays);
+  const endPrev = new Date(range.startDate.getTime() - 1);
+  endPrev.setHours(23, 59, 59, 999);
+  const startPrev = new Date(endPrev.getTime() - (days - 1) * MS_IN_DAY);
+  startPrev.setHours(0, 0, 0, 0);
+
+  return {
+    startDate: startPrev,
+    endDate: endPrev,
+    startISO: startPrev.toISOString(),
+    endISO: endPrev.toISOString(),
+    diffDays: days,
+  };
+};
+
 const pickField = (row, candidates) => {
   for (const key of candidates) {
     if (Object.prototype.hasOwnProperty.call(row, key) && row[key] !== null && row[key] !== undefined) {
@@ -108,7 +133,7 @@ const findLatestBeforeOrOn = (history, limitDate) => {
       return history[i];
     }
   }
-  return history.length > 0 ? history[history.length - 1] : null;
+  return null;
 };
 
 const findBaseline = (history, startDate) => {
@@ -132,15 +157,7 @@ const fetchPedidos = async (startISO, endISO) => {
       total_final,
       id_perfil,
       id_estado,
-      perfil:perfil (
-        id_perfil,
-        nombre,
-        email,
-        telefono,
-        direccion,
-        observaciones,
-        is_active
-      ),
+      perfil:perfil ( ${PERFIL_FIELDS} ),
       estado:estado (
         id_estado,
         estado
@@ -170,15 +187,7 @@ const fetchPedidos = async (startISO, endISO) => {
       total_final,
       id_perfil,
       id_estado,
-      perfil:perfil (
-        id_perfil,
-        nombre,
-        email,
-        telefono,
-        direccion,
-        observaciones,
-        is_active
-      ),
+      perfil:perfil ( ${PERFIL_FIELDS} ),
       estado:estado (
         id_estado,
         estado
@@ -285,6 +294,153 @@ const fetchPedidoDetalles = async (startISO, endISO) => {
   });
 };
 
+const fetchEventos = async (startISO, endISO) => {
+  let query = supabase
+    .from('evento')
+    .select(`
+      id_evento,
+      fecha_creacion,
+      fecha_entrega,
+      total_final,
+      id_perfil,
+      id_estado,
+      perfil:perfil ( ${PERFIL_FIELDS} ),
+      estado:estado (
+        id_estado,
+        estado
+      )
+    `)
+    .order('fecha_creacion', { ascending: true });
+
+  if (startISO) {
+    query = query.gte('fecha_creacion', startISO);
+  }
+  if (endISO) {
+    query = query.lte('fecha_creacion', endISO);
+  }
+
+  const { data, error } = await query;
+
+  if (!error) {
+    return data || [];
+  }
+
+  const { data: fallbackData, error: fallbackError } = await supabase
+    .from('evento')
+    .select(`
+      id_evento,
+      fecha_creacion,
+      fecha_entrega,
+      total_final,
+      id_perfil,
+      id_estado,
+      perfil:perfil ( ${PERFIL_FIELDS} ),
+      estado:estado (
+        id_estado,
+        estado
+      )
+    `);
+
+  if (fallbackError) {
+    throw new Error('Error al obtener eventos para el dashboard');
+  }
+
+  const startDate = startISO ? new Date(startISO) : null;
+  const endDate = endISO ? new Date(endISO) : null;
+
+  return (fallbackData || []).filter((row) => {
+    const dateStr = row?.fecha_creacion || row?.fecha_entrega;
+    if (!dateStr) return false;
+    const date = new Date(dateStr);
+    if (Number.isNaN(date.getTime())) return false;
+    if (startDate && date < startDate) return false;
+    if (endDate && date > endDate) return false;
+    return true;
+  });
+};
+
+const fetchEventoDetalles = async (startISO, endISO) => {
+  let query = supabase
+    .from('lista_evento')
+    .select(`
+      id_lista,
+      id_evento,
+      id_torta,
+      id_bandeja,
+      cantidad,
+      precio_unitario,
+      evento:evento!inner (
+        id_evento,
+        fecha_creacion
+      ),
+      torta:torta (
+        id_torta,
+        nombre,
+        precio
+      ),
+      bandeja:bandeja (
+        id_bandeja,
+        nombre,
+        precio
+      )
+    `);
+
+  if (startISO) {
+    query = query.gte('evento.fecha_creacion', startISO);
+  }
+  if (endISO) {
+    query = query.lte('evento.fecha_creacion', endISO);
+  }
+
+  const { data, error } = await query;
+
+  if (!error) {
+    return data || [];
+  }
+
+  const { data: fallbackData, error: fallbackError } = await supabase
+    .from('lista_evento')
+    .select(`
+      id_lista,
+      id_evento,
+      id_torta,
+      id_bandeja,
+      cantidad,
+      precio_unitario,
+      evento:evento (
+        id_evento,
+        fecha_creacion
+      ),
+      torta:torta (
+        id_torta,
+        nombre,
+        precio
+      ),
+      bandeja:bandeja (
+        id_bandeja,
+        nombre,
+        precio
+      )
+    `);
+
+  if (fallbackError) {
+    throw new Error('Error al obtener detalles de eventos para el dashboard');
+  }
+
+  const startDate = startISO ? new Date(startISO) : null;
+  const endDate = endISO ? new Date(endISO) : null;
+
+  return (fallbackData || []).filter((row) => {
+    const dateStr = row?.evento?.fecha_creacion;
+    if (!dateStr) return false;
+    const date = new Date(dateStr);
+    if (Number.isNaN(date.getTime())) return false;
+    if (startDate && date < startDate) return false;
+    if (endDate && date > endDate) return false;
+    return true;
+  });
+};
+
 const fetchMateriasPrimas = async () => {
   const { data, error } = await supabase
     .from('materiaprima')
@@ -333,6 +489,32 @@ const buildKpis = (pedidos) => {
     ingresosTotales: round(totalRevenue),
     totalPedidos: totalOrders,
     ticketPromedio: round(ticketPromedio),
+  };
+};
+
+const buildKpisCombinados = (pedidos, eventos) => {
+  const kpiPedidos = buildKpis(pedidos);
+  const kpiEventos = buildKpis(eventos);
+  const ingresosTotales = round(kpiPedidos.ingresosTotales + kpiEventos.ingresosTotales);
+  const totalOperaciones = kpiPedidos.totalPedidos + kpiEventos.totalPedidos;
+  const ticketPromedioGlobal = totalOperaciones > 0 ? round(ingresosTotales / totalOperaciones) : 0;
+
+  return {
+    global: {
+      ingresosTotales,
+      totalOperaciones,
+      totalPedidos: kpiPedidos.totalPedidos,
+      totalEventos: kpiEventos.totalPedidos,
+      ticketPromedio: ticketPromedioGlobal,
+      ticketPromedioPedidos: kpiPedidos.ticketPromedio,
+      ticketPromedioEventos: kpiEventos.ticketPromedio,
+    },
+    pedidos: kpiPedidos,
+    eventos: {
+      ingresosTotales: kpiEventos.ingresosTotales,
+      totalEventos: kpiEventos.totalPedidos,
+      ticketPromedio: kpiEventos.ticketPromedio,
+    },
   };
 };
 
@@ -392,22 +574,27 @@ const buildTopClients = (pedidos) => {
   const map = new Map();
 
   pedidos.forEach((pedido) => {
-    const cliente = pedido?.cliente || {};
-    const id = pedido?.id_perfil ?? cliente?.id_perfil ?? cliente?.id ?? null;
-    if (!id) return;
+    const perfil = pedido?.perfil || pedido?.cliente || {};
+    const rawId = pedido?.id_perfil ?? perfil?.id_perfil ?? null;
+    const id = Number(rawId);
+    if (!Number.isFinite(id)) return;
+
+    const nombre = perfil?.nombre || `Cliente ${id}`;
+    const email = perfil?.email ?? perfil?.correo ?? null;
 
     const entry = map.get(id) || {
       id_perfil: id,
-      nombre: cliente?.nombre || `Cliente ${id}`,
-      email: cliente?.email ?? cliente?.correo ?? null,
+      id_cliente: id,
+      nombre,
+      email,
       totalGastado: 0,
       cantidadPedidos: 0,
     };
 
     entry.totalGastado += toNumber(pedido.total_final);
     entry.cantidadPedidos += 1;
-    entry.nombre = cliente?.nombre || entry.nombre;
-    entry.email = cliente?.email ?? cliente?.correo ?? entry.email;
+    entry.nombre = nombre || entry.nombre;
+    entry.email = email ?? entry.email;
     map.set(id, entry);
   });
 
@@ -416,18 +603,85 @@ const buildTopClients = (pedidos) => {
     .slice(0, 10)
     .map((item) => ({
       id_perfil: item.id_perfil,
+      id_cliente: item.id_cliente ?? item.id_perfil,
       nombre: item.nombre,
-      email: item.email || null,
+      email: item.email ?? null,
       totalGastado: round(item.totalGastado),
       cantidadPedidos: item.cantidadPedidos,
     }));
 };
 
-const buildProductsPerformance = (detalles) => {
+const buildTopClientsCombined = (pedidos, eventos) => {
+  const aggregate = new Map();
+
+  const track = (row, source) => {
+    const perfil = row?.perfil || row?.cliente || {};
+    const rawId = row?.id_perfil ?? perfil?.id_perfil ?? null;
+    const id = Number(rawId);
+    if (!Number.isFinite(id)) return;
+
+    const nombre = perfil?.nombre || `Cliente ${id}`;
+    const email = perfil?.email ?? perfil?.correo ?? null;
+
+    const entry = aggregate.get(id) || {
+      id_perfil: id,
+      id_cliente: id,
+      nombre,
+      email,
+      ingresosPedidos: 0,
+      ingresosEventos: 0,
+      totalGastado: 0,
+      pedidos: 0,
+      eventos: 0,
+    };
+
+    const total = toNumber(row.total_final);
+    if (source === 'pedido') {
+      entry.ingresosPedidos += total;
+      entry.pedidos += 1;
+    } else if (source === 'evento') {
+      entry.ingresosEventos += total;
+      entry.eventos += 1;
+    }
+    entry.totalGastado = entry.ingresosPedidos + entry.ingresosEventos;
+    entry.nombre = nombre || entry.nombre;
+    entry.email = email ?? entry.email;
+    aggregate.set(id, entry);
+  };
+
+  (pedidos || []).forEach((p) => track(p, 'pedido'));
+  (eventos || []).forEach((e) => track(e, 'evento'));
+
+  const topGlobal = Array.from(aggregate.values())
+    .sort((a, b) => b.totalGastado - a.totalGastado)
+    .slice(0, 10)
+    .map((item) => ({
+      id_perfil: item.id_perfil,
+      id_cliente: item.id_cliente ?? item.id_perfil,
+      nombre: item.nombre,
+      email: item.email ?? null,
+      totalGastado: round(item.totalGastado),
+      ingresosPedidos: round(item.ingresosPedidos),
+      ingresosEventos: round(item.ingresosEventos),
+      cantidadPedidos: item.pedidos,
+      cantidadEventos: item.eventos,
+    }));
+
+  return {
+    top: topGlobal,
+    topPedidos: buildTopClients(pedidos),
+    topEventos: buildTopClients(eventos),
+  };
+};
+
+const buildProductsPerformance = (detallesPedidos, detallesEventos) => {
   const tortasMap = new Map();
   const productosMap = new Map();
+  const bandejasMap = new Map();
 
-  detalles.forEach((detalle) => {
+  const allDetalles = [...(detallesPedidos || []), ...(detallesEventos || [])];
+
+  allDetalles.forEach((detalle) => {
     const cantidad = toNumber(detalle?.cantidad);
     if (!cantidad) return;
     const precio = toNumber(detalle?.precio_unitario);
@@ -444,6 +698,16 @@ const buildProductsPerformance = (detalles) => {
       entry.cantidad += cantidad;
       entry.nombre = nombreTorta;
       tortasMap.set(key, entry);
+    }
+
+    if (bandejaId) {
+      const key = String(bandejaId);
+      const nombreBandeja = detalle?.bandeja?.nombre || `Bandeja ${bandejaId}`;
+      const entry = bandejasMap.get(key) || { id_bandeja: bandejaId, nombre: nombreBandeja, ingresos: 0, cantidad: 0 };
+      entry.ingresos += ingresos;
+      entry.cantidad += cantidad;
+      entry.nombre = nombreBandeja;
+      bandejasMap.set(key, entry);
     }
 
     const productId = tortaId ? `torta-${tortaId}` : bandejaId ? `bandeja-${bandejaId}` : null;
@@ -488,8 +752,19 @@ const buildProductsPerformance = (detalles) => {
     }))
     .sort((a, b) => b.ingresosTotales - a.ingresosTotales);
 
+  const topBandejas = Array.from(bandejasMap.values())
+    .sort((a, b) => b.ingresos - a.ingresos)
+    .slice(0, 10)
+    .map((item) => ({
+      id_bandeja: item.id_bandeja,
+      nombre: item.nombre,
+      ingresos: round(item.ingresos),
+      cantidad: item.cantidad,
+    }));
+
   return {
     topTortas,
+    topBandejas,
     tablaProductos,
   };
 };
@@ -580,16 +855,95 @@ const buildMaterialPriceIncreases = (historialData, materias, range) => {
   return positive.concat(remaining);
 };
 
+const buildComparativoIngresos = async (range, pedidosActuales, eventosActuales) => {
+  const prevRange = buildPreviousRange(range);
+  const [pedidosPrev, eventosPrev] = await Promise.all([
+    fetchPedidos(prevRange.startISO, prevRange.endISO),
+    fetchEventos(prevRange.startISO, prevRange.endISO),
+  ]);
+
+  const kpisActual = buildKpisCombinados(pedidosActuales, eventosActuales).global;
+  const kpisPrevio = buildKpisCombinados(pedidosPrev, eventosPrev).global;
+
+  return {
+    actual: kpisActual,
+    previo: kpisPrevio,
+    variaciones: {
+      ingresos: calcVariation(kpisActual.ingresosTotales, kpisPrevio.ingresosTotales),
+      operaciones: calcVariation(kpisActual.totalOperaciones, kpisPrevio.totalOperaciones),
+    },
+    rangoPrevio: {
+      fechaInicio: prevRange.startISO,
+      fechaFin: prevRange.endISO,
+    },
+  };
+};
+
+const fetchAgenda = async ({ daysAhead = 15, limit = 5 } = {}) => {
+  const start = startOfDayUTC(new Date());
+  const end = new Date(start.getTime() + daysAhead * MS_IN_DAY);
+
+  const [pedidos, eventos] = await Promise.all([
+    supabase
+      .from('pedido')
+      .select(`id, fecha_entrega, total_final, id_perfil, perfil:perfil ( ${PERFIL_FIELDS} )`)
+      .gte('fecha_entrega', start.toISOString())
+      .lte('fecha_entrega', end.toISOString())
+      .order('fecha_entrega', { ascending: true })
+      .limit(limit),
+    supabase
+      .from('evento')
+      .select(`id_evento, fecha_entrega, total_final, id_perfil, perfil:perfil ( ${PERFIL_FIELDS} )`)
+      .gte('fecha_entrega', start.toISOString())
+      .lte('fecha_entrega', end.toISOString())
+      .order('fecha_entrega', { ascending: true })
+      .limit(limit),
+  ]);
+
+  const normalizePedidoAgenda = (row) => ({
+    id: row?.id ?? row?.id_pedido ?? null,
+    tipo: 'pedido',
+    fecha_entrega: row?.fecha_entrega ?? null,
+    total_final: toNumber(row?.total_final),
+    id_perfil: row?.id_perfil ?? null,
+    cliente: row?.perfil?.nombre ?? null,
+  });
+
+  const normalizeEventoAgenda = (row) => ({
+    id: row?.id_evento ?? row?.id ?? null,
+    tipo: 'evento',
+    fecha_entrega: row?.fecha_entrega ?? null,
+    total_final: toNumber(row?.total_final),
+    id_perfil: row?.id_perfil ?? null,
+    cliente: row?.perfil?.nombre ?? null,
+  });
+
+  return {
+    pedidos: Array.isArray(pedidos?.data) ? pedidos.data.map(normalizePedidoAgenda) : [],
+    eventos: Array.isArray(eventos?.data) ? eventos.data.map(normalizeEventoAgenda) : [],
+  };
+};
+
 const getDashboardData = async ({ startDate, endDate } = {}) => {
   const range = normalizeDateRange(startDate, endDate);
   const granularity = determineGranularity(range.diffDays);
 
-  const [pedidos, detalles, materias, historial] = await Promise.all([
+  const [pedidos, eventos, detallesPedidos, detallesEventos, materias, historial, agenda] = await Promise.all([
     fetchPedidos(range.startISO, range.endISO),
+    fetchEventos(range.startISO, range.endISO),
     fetchPedidoDetalles(range.startISO, range.endISO),
+    fetchEventoDetalles(range.startISO, range.endISO),
     fetchMateriasPrimas(),
     fetchHistorialPrecios(range.endISO),
+    fetchAgenda(),
   ]);
+
+  const resumenes = buildKpisCombinados(pedidos, eventos);
+  const comparativo = await buildComparativoIngresos(range, pedidos, eventos);
+
+  const tendenciaIngresosPedidos = buildRevenueTrend(pedidos, granularity);
+  const tendenciaIngresosEventos = buildRevenueTrend(eventos, granularity);
+  const tendenciaIngresosTotal = buildRevenueTrend([...(pedidos || []), ...(eventos || [])], granularity);
 
   return {
     filtros: {
@@ -597,16 +951,22 @@ const getDashboardData = async ({ startDate, endDate } = {}) => {
       fechaFin: range.endISO,
       granularidad: granularity,
     },
-    resumen: buildKpis(pedidos),
+    resumen: resumenes.global,
+    resumenes,
+    comparativo,
     ventas: {
-      tendenciaIngresos: buildRevenueTrend(pedidos, granularity),
+      tendenciaIngresos: tendenciaIngresosPedidos,
+      tendenciaIngresosEventos,
+      tendenciaIngresosTotal,
       pedidosPorEstado: buildStatusBreakdown(pedidos),
+      eventosPorEstado: buildStatusBreakdown(eventos),
       materiasPrimaMasCaras: buildMaterialPriceIncreases(historial.data, materias, range),
     },
-    productos: buildProductsPerformance(detalles),
+    productos: buildProductsPerformance(detallesPedidos, detallesEventos),
     clientes: {
-      top: buildTopClients(pedidos),
+      ...buildTopClientsCombined(pedidos, eventos),
     },
+    agenda,
   };
 };
 
