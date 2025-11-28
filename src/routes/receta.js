@@ -13,6 +13,7 @@ const {
   updateReceta,
   deleteReceta,
 } = require('../services/recetaservice')
+const { sendError } = require('../utils/errors');
 
 // GET /tortas
 router.get('/tortas', authenticateToken, requirePermissions(PERMISSIONS.RECETAS.VER), async (req, res) => {
@@ -96,7 +97,7 @@ router.delete('/:id', authenticateToken, requirePermissions(PERMISSIONS.RECETAS.
     const resultado = await deleteReceta(id);
     res.status(200).json(resultado);
   } catch (error) {
-    res.status(500).json({ error: 'Error al eliminar la receta' });
+    return sendError(res, error);
   }
 });
 

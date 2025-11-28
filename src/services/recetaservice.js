@@ -1,5 +1,5 @@
 const supabase = require('../config/supabase')
-const {fromSupabaseError, assertFound} = require('../utils/errors');
+const {fromSupabaseError, assertFound, AppError} = require('../utils/errors');
 
 // Obtener tortas (solo id y nombre)
 const obtenerTortas = async () => {
@@ -186,6 +186,33 @@ const updateReceta = async (id_receta, { porciones, ingredientes }) => {
 };
 
 const deleteReceta = async (id_receta) => {
+  const { data: recetaRow, error: recetaErr } = await supabase
+    .from('receta')
+    .select('id_torta')
+    .eq('id_receta', id_receta)
+    .single();
+
+  if (recetaErr) throw fromSupabaseError(recetaErr, 'No se pudo verificar la receta.');
+  assertFound(recetaRow, 'La receta no existe o ya fue eliminada.');
+
+  const { count: pedCount, error: pedErr } = await supabase
+    .from('pedido_detalles')
+    .select('*', { count: 'exact', head: true })
+    .eq('id_torta', recetaRow.id_torta);
+  if (pedErr) throw fromSupabaseError(pedErr, 'No se pudo verificar el uso de la receta en pedidos.');
+  if ((pedCount ?? 0) > 0) {
+    throw AppError.conflict('No se puede eliminar la receta porque la torta esta en pedidos.');
+  }
+
+  const { count: evCount, error: evErr } = await supabase
+    .from('lista_evento')
+    .select('*', { count: 'exact', head: true })
+    .eq('id_torta', recetaRow.id_torta);
+  if (evErr) throw fromSupabaseError(evErr, 'No se pudo verificar el uso de la receta en eventos.');
+  if ((evCount ?? 0) > 0) {
+    throw AppError.conflict('No se puede eliminar la receta porque la torta esta en eventos.');
+  }
+
   // 1. Eliminar primero los ingredientes (por la foreign key)
   const { error: errorIngredientes } = await supabase
     .from('ingredientereceta')
