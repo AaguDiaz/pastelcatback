@@ -44,7 +44,7 @@ router.get('/:id/completo', authenticateToken, requirePermissions(PERMISSIONS.EV
 
 router.post('/', authenticateToken, requirePermissions(PERMISSIONS.EVENTOS.AGREGAR), async (req, res) => {
   try {
-    const evento = await createEvento(req.body);
+    const evento = await createEvento(req.body, req.user?.sub || null);
     res.status(201).json(evento);
   } catch (err) {
     sendError(res, err);
@@ -53,7 +53,7 @@ router.post('/', authenticateToken, requirePermissions(PERMISSIONS.EVENTOS.AGREG
 
 router.put('/:id', authenticateToken, requirePermissions(PERMISSIONS.EVENTOS.MODIFICAR), async (req, res) => {
   try {
-    const evento = await updateEvento(req.params.id, req.body);
+    const evento = await updateEvento(req.params.id, req.body, req.user?.sub || null);
     res.json(evento);
   } catch (err) {
     sendError(res, err);
@@ -69,7 +69,7 @@ router.put('/:id/estado', authenticateToken, requirePermissions(PERMISSIONS.EVEN
       return res.status(400).json({ error: 'Parámetros inválidos (id o id_estado)' });
     }
 
-    const evento = await updateEstadoEvento(id, id_estado);
+    const evento = await updateEstadoEvento(id, id_estado, req.user?.sub || null);
     return res.json(evento);
   } catch (err) {
     return sendError(res, err);
