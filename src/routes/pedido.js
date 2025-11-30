@@ -43,7 +43,7 @@ router.get('/:id/completo', authenticateToken, requirePermissions(PERMISSIONS.PE
 
 router.post('/', authenticateToken, requirePermissions(PERMISSIONS.PEDIDOS.AGREGAR), async (req, res) => {
   try {
-    const pedido = await createPedido(req.body);
+    const pedido = await createPedido(req.body, req.user?.sub || null);
     res.status(201).json(pedido);
   } catch (err) {
     res.status(400).json({ error: err.message });
@@ -52,7 +52,7 @@ router.post('/', authenticateToken, requirePermissions(PERMISSIONS.PEDIDOS.AGREG
 
 router.put('/:id', authenticateToken, requirePermissions(PERMISSIONS.PEDIDOS.MODIFICAR), async (req, res) => {
   try {
-    const pedido = await updatePedido(req.params.id, req.body);
+    const pedido = await updatePedido(req.params.id, req.body, req.user?.sub || null);
     res.json(pedido);
   } catch (err) {
     res.status(400).json({ error: err.message });
@@ -68,7 +68,7 @@ router.put('/:id/estado', authenticateToken, requirePermissions(PERMISSIONS.PEDI
     return res.status(400).json({ error: 'Parámetros inválidos (id o id_estado)' });
     }
 
-    const pedido = await updateEstado(id, id_estado);
+    const pedido = await updateEstado(id, id_estado, req.user?.sub || null);
     res.json(pedido);
     } catch (err) {
     res.status(400).json({ error: err.message });

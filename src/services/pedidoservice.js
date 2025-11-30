@@ -1,8 +1,17 @@
 const supabase = require('../config/supabase');
 const { fromSupabaseError} = require('../utils/errors');
+const { createNotification } = require('./notificacionservice');
 
 const ITEMS_PER_PAGE = 10;
 const ESTADO_PENDIENTE = 'pendiente';
+
+const safeNotify = async (payload) => {
+  try {
+    await createNotification(payload);
+  } catch (err) {
+    // Silenciar para no romper flujo de pedidos si falla la notificación
+  }
+};
 
 const sanitizeDescuento = (valor, totalReferencia = 0) => {
   const numero = Number(valor);
@@ -118,17 +127,20 @@ const getPedidoByIdFull = async (id) => {
   return data;
 };
 
-const createPedido = async ({
-  id_perfil,
-  fecha_entrega,
-  tipo_entrega,                 // varchar en la tabla
-  tortas = [],
-  bandejas = [],
-  observaciones = null,
-  direccion_entrega = null,
-  total_descuento: totalDescuentoInput = null,
-  descuento: descuentoInput = null,
-}) => {
+const createPedido = async (
+  {
+    id_perfil,
+    fecha_entrega,
+    tipo_entrega,                 // varchar en la tabla
+    tortas = [],
+    bandejas = [],
+    observaciones = null,
+    direccion_entrega = null,
+    total_descuento: totalDescuentoInput = null,
+    descuento: descuentoInput = null,
+  },
+  actorId = null,
+) => {
   if (!id_perfil || !fecha_entrega || !tipo_entrega) {
     throw new Error('Faltan datos del pedido');
   }
@@ -225,10 +237,20 @@ const createPedido = async ({
     throw new Error('Error al crear detalle del pedido');
   }
 
+  await safeNotify({
+    title: `Pedido #${pedidoData.id} creado`,
+    body: `Total ${totalFinal} · estado: ${ESTADO_PENDIENTE}`,
+    category: 'pedido',
+    trigger_type: 'creado',
+    id_pedido: pedidoData.id,
+    created_by: actorId || null,
+    recipients: actorId ? [actorId] : null,
+  });
+
   return pedidoData;
 };
 
-const updatePedido = async (id, datos) => {
+const updatePedido = async (id, datos, actorId = null) => {
   const pedido = await getPedidoById(id);
   if (pedido.estado !== ESTADO_PENDIENTE) {
     throw new Error('Solo se puede editar un pedido pendiente');
@@ -342,10 +364,20 @@ const updatePedido = async (id, datos) => {
     if (detError) throw new Error('Error al actualizar detalle del pedido');
   }
 
+  await safeNotify({
+    title: `Pedido #${id} actualizado`,
+    body: `Total ${totalFinal} · estado: pendiente`,
+    category: 'pedido',
+    trigger_type: 'actualizado',
+    id_pedido: id,
+    created_by: actorId || null,
+    recipients: actorId ? [actorId] : null,
+  });
+
   return pedidoActualizado;
 };
 
-const updateEstado = async (id, idEstadoNuevo) => {
+const updateEstado = async (id, idEstadoNuevo, actorId = null) => {
   const mapLabelToId = { pendiente: 1, confirmado: 2, cerrado: 3, cancelado: 4 };
   const transiciones = {
   1: [2, 4], // pendiente -> confirmado | cancelado
@@ -381,6 +413,17 @@ const updateEstado = async (id, idEstadoNuevo) => {
   if (error || !data) {
   throw new Error('Error al actualizar estado');
   }
+
+  const estadoNuevoLabel = Object.entries(mapLabelToId).find(([, value]) => value === idEstadoNuevo)?.[0] || 'actualizado';
+  await safeNotify({
+    title: `Pedido #${id} cambio de estado`,
+    body: `Nuevo estado: ${estadoNuevoLabel}`,
+    category: 'pedido',
+    trigger_type: 'estado',
+    id_pedido: id,
+    created_by: actorId || null,
+    recipients: actorId ? [actorId] : null,
+  });
 
   return data;
 };

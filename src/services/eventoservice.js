@@ -1,8 +1,17 @@
 const supabase = require('../config/supabase');
 const { fromSupabaseError } = require('../utils/errors');
+const { createNotification } = require('./notificacionservice');
 
 const ITEMS_PER_PAGE = 10;
 const ESTADO_PENDIENTE = 'pendiente';
+
+const safeNotify = async (payload) => {
+  try {
+    await createNotification(payload);
+  } catch (err) {
+    // Silenciar para no romper flujo de eventos si falla la notificación
+  }
+};
 
 const sanitizeDescuento = (valor, totalReferencia = 0) => {
   const numero = Number(valor);
@@ -432,18 +441,21 @@ const calcularDetalles = async ({ tortas = [], bandejas = [], articulos = [] }) 
   return { total, totalItems, detalles };
 };
 
-const createEvento = async ({
-  id_perfil,
-  fecha_entrega,
-  tipo_entrega,
-  tortas = [],
-  bandejas = [],
-  articulos = [],
-  observaciones = null,
-  direccion_entrega = null,
-  total_descuento: totalDescuentoInput = null,
-  descuento: descuentoInput = null,
-}) => {
+const createEvento = async (
+  {
+    id_perfil,
+    fecha_entrega,
+    tipo_entrega,
+    tortas = [],
+    bandejas = [],
+    articulos = [],
+    observaciones = null,
+    direccion_entrega = null,
+    total_descuento: totalDescuentoInput = null,
+    descuento: descuentoInput = null,
+  },
+  actorId = null,
+) => {
   if (!id_perfil || !fecha_entrega || !tipo_entrega) {
     throw new Error('Faltan datos del evento');
   }
@@ -497,10 +509,20 @@ const createEvento = async ({
     }
   }
 
+  await safeNotify({
+    title: `Evento #${eventoData.id_evento} creado`,
+    body: `Total ${totalFinal} · estado: ${ESTADO_PENDIENTE}`,
+    category: 'evento',
+    trigger_type: 'creado',
+    id_evento: eventoData.id_evento,
+    created_by: actorId || null,
+    recipients: actorId ? [actorId] : null,
+  });
+
   return eventoData;
 };
 
-const updateEvento = async (id, datos) => {
+const updateEvento = async (id, datos, actorId = null) => {
   const evento = await getEventoById(id);
   if (String(evento.estado || '').toLowerCase().trim() !== ESTADO_PENDIENTE) {
     throw new Error('Solo se puede editar un evento pendiente');
@@ -572,10 +594,20 @@ const updateEvento = async (id, datos) => {
     }
   }
 
+  await safeNotify({
+    title: `Evento #${id} actualizado`,
+    body: `Total ${totalFinal} · estado: pendiente`,
+    category: 'evento',
+    trigger_type: 'actualizado',
+    id_evento: id,
+    created_by: actorId || null,
+    recipients: actorId ? [actorId] : null,
+  });
+
   return eventoActualizado;
 };
 
-const updateEstadoEvento = async (id, idEstadoNuevo) => {
+const updateEstadoEvento = async (id, idEstadoNuevo, actorId = null) => {
   const mapLabelToId = { pendiente: 1, confirmado: 2, cerrado: 3, cancelado: 4 };
   const transiciones = {
     1: [2, 4],
@@ -621,6 +653,17 @@ const updateEstadoEvento = async (id, idEstadoNuevo) => {
   if (error || !data) {
     throw new Error('Error al actualizar estado del evento');
   }
+
+  const estadoNuevoLabel = Object.entries(mapLabelToId).find(([, value]) => value === idEstadoNuevo)?.[0] || 'actualizado';
+  await safeNotify({
+    title: `Evento #${id} cambio de estado`,
+    body: `Nuevo estado: ${estadoNuevoLabel}`,
+    category: 'evento',
+    trigger_type: 'estado',
+    id_evento: id,
+    created_by: actorId || null,
+    recipients: actorId ? [actorId] : null,
+  });
 
   return data;
 };
